@@ -1,27 +1,56 @@
-const Database = require('better-sqlite3');
+// db.js — PostgreSQL 版本（兼容 Vercel Serverless 和 Neon）
+// 对外 API 与原 SQLite 版本完全一致
+
+const { Pool } = require('pg');
 const path = require('path');
 const fs = require('fs');
 
-const DB_PATH = path.resolve(__dirname, '..', 'ai-customer-service', 'backend', 'data', 'broadband_cs.db');
+// 从环境变量读取数据库连接串（Vercel 中设置）
+const DATABASE_URL = process.env.DATABASE_URL || '';
+
 const DATA_DIR = path.resolve(__dirname, '..', '数据');
 
-let db;
+let pool;
+let tablesInitialized = false;
 
-function getDb() {
-  if (!db) {
-    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-    db = new Database(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('foreign_keys = ON');
-    initTables();
+function getPool() {
+  if (!pool) {
+    if (!DATABASE_URL) {
+      throw new Error('DATABASE_URL 环境变量未设置，请在 Vercel 中配置');
+    }
+    pool = new Pool({
+      connectionString: DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+      max: 5,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
+    });
   }
-  return db;
+  return pool;
 }
 
-function initTables() {
-  db.exec(`
+async function query(text, params) {
+  const client = await getPool().connect();
+  try {
+    const result = await client.query(text, params);
+    return result;
+  } finally {
+    client.release();
+  }
+}
+
+// 确保表已创建（幂等）
+async function ensureTables() {
+  if (tablesInitialized) return;
+  await initTables();
+  tablesInitialized = true;
+}
+
+// ====== 建表 ======
+async function initTables() {
+  await query(`
     CREATE TABLE IF NOT EXISTS customer (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT NOT NULL DEFAULT '',
       phone TEXT NOT NULL DEFAULT '',
       wechat_id TEXT NOT NULL DEFAULT '',
@@ -31,19 +60,19 @@ function initTables() {
       package_name TEXT NOT NULL DEFAULT '',
       package_id TEXT NOT NULL DEFAULT '',
       status INTEGER NOT NULL DEFAULT 1,
-      expire_time DATETIME,
+      expire_time TIMESTAMP,
       install_date TEXT DEFAULT '',
       sales_person_id TEXT DEFAULT '',
       remark TEXT,
-      create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
-      update_time DATETIME DEFAULT CURRENT_TIMESTAMP
+      create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE INDEX IF NOT EXISTS idx_customer_phone ON customer(phone);
     CREATE INDEX IF NOT EXISTS idx_customer_wechat ON customer(wechat_id);
 
     CREATE TABLE IF NOT EXISTS "order" (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       order_id TEXT NOT NULL DEFAULT '',
       client_id TEXT NOT NULL DEFAULT '',
       client_name TEXT NOT NULL DEFAULT '',
@@ -55,15 +84,15 @@ function initTables() {
       total_amount REAL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'active',
       sales_person_id TEXT DEFAULT '',
-      paid_at DATETIME,
-      create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
-      update_time DATETIME DEFAULT CURRENT_TIMESTAMP
+      paid_at TIMESTAMP,
+      create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE INDEX IF NOT EXISTS idx_order_client ON "order"(client_id);
 
     CREATE TABLE IF NOT EXISTS lead (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       lead_id TEXT NOT NULL DEFAULT '',
       name TEXT NOT NULL DEFAULT '',
       phone TEXT NOT NULL DEFAULT '',
@@ -72,12 +101,12 @@ function initTables() {
       status TEXT DEFAULT 'new',
       notes TEXT DEFAULT '',
       assigned_to TEXT DEFAULT '',
-      create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
-      update_time DATETIME DEFAULT CURRENT_TIMESTAMP
+      create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS staff (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       staff_id TEXT NOT NULL DEFAULT '',
       name TEXT NOT NULL DEFAULT '',
       phone TEXT NOT NULL DEFAULT '',
@@ -85,12 +114,12 @@ function initTables() {
       status TEXT DEFAULT 'active',
       join_date TEXT DEFAULT '',
       password TEXT DEFAULT '',
-      create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
-      update_time DATETIME DEFAULT CURRENT_TIMESTAMP
+      create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS package (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       package_name TEXT NOT NULL DEFAULT '',
       speed TEXT DEFAULT '',
       price REAL DEFAULT 0,
@@ -101,12 +130,12 @@ function initTables() {
       features TEXT DEFAULT '[]',
       description TEXT,
       status INTEGER DEFAULT 1,
-      create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
-      update_time DATETIME DEFAULT CURRENT_TIMESTAMP
+      create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS ticket (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       ticket_no TEXT NOT NULL,
       customer_id INTEGER,
       wechat_id TEXT DEFAULT '',
@@ -122,8 +151,8 @@ function initTables() {
       handler TEXT DEFAULT '',
       handle_note TEXT,
       source TEXT DEFAULT 'wechat',
-      create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
-      update_time DATETIME DEFAULT CURRENT_TIMESTAMP
+      create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE UNIQUE INDEX IF NOT EXISTS idx_ticket_no ON ticket(ticket_no);
@@ -131,71 +160,95 @@ function initTables() {
     CREATE INDEX IF NOT EXISTS idx_ticket_wechat ON ticket(wechat_id);
   `);
 
-  // 兼容 NestJS TypeORM 自动创建的表（可能缺少扩展字段）
-  const ensureColumn = (table, col, def) => {
-    try {
-      const existing = db.prepare(`PRAGMA table_info(${table})`).all().map(r => r.name);
+  // 确保扩展字段存在
+  const tables = [
+    { name: 'customer', cols: ['package_id', 'install_date', 'sales_person_id'] },
+    { name: 'ticket', cols: ['client_id', 'issue_type', 'priority'] },
+    { name: 'package', cols: ['duration_months', 'installation_fee', 'total_price', 'features'] },
+  ];
+  for (const t of tables) {
+    const { rows } = await query(`SELECT column_name FROM information_schema.columns WHERE table_name = $1`, [t.name]);
+    const existing = rows.map(r => r.column_name);
+    for (const col of t.cols) {
       if (!existing.includes(col)) {
-        db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+        // PostgreSQL 不支持 ALTER TABLE ADD COLUMN IF NOT EXISTS（旧版本），用 try
+        try {
+          await query(`ALTER TABLE ${t.name} ADD COLUMN ${col} TEXT DEFAULT ''`);
+        } catch (e) { /* column may already exist */ }
       }
-    } catch (e) { /* table might not exist yet */ }
-  };
-  ensureColumn('customer', 'package_id', 'TEXT DEFAULT ""');
-  ensureColumn('customer', 'install_date', 'TEXT DEFAULT ""');
-  ensureColumn('customer', 'sales_person_id', 'TEXT DEFAULT ""');
-  ensureColumn('ticket', 'client_id', 'TEXT DEFAULT ""');
-  ensureColumn('ticket', 'issue_type', 'TEXT DEFAULT ""');
-  ensureColumn('ticket', 'priority', 'TEXT DEFAULT "medium"');
-  ensureColumn('package', 'duration_months', 'INTEGER DEFAULT 6');
-  ensureColumn('package', 'installation_fee', 'REAL DEFAULT 0');
-  ensureColumn('package', 'total_price', 'REAL DEFAULT 0');
-  ensureColumn('package', 'features', 'TEXT DEFAULT "[]"');
+    }
+  }
 }
 
 // ====== Customer CRUD ======
-function getAllCustomers() {
-  return getDb().prepare('SELECT * FROM customer ORDER BY id').all();
+async function getAllCustomers() {
+  await ensureTables();
+  const { rows } = await query('SELECT * FROM customer ORDER BY id');
+  return rows;
 }
 
-function getCustomerByPhone(phone) {
+async function getCustomerByPhone(phone) {
   if (!phone) return null;
-  return getDb().prepare('SELECT * FROM customer WHERE phone = ?').get(phone);
+  await ensureTables();
+  const { rows } = await query('SELECT * FROM customer WHERE phone = $1', [phone]);
+  return rows[0] || null;
 }
 
-function getCustomerByWechat(wechatId) {
+async function getCustomerByWechat(wechatId) {
   if (!wechatId) return null;
-  return getDb().prepare('SELECT * FROM customer WHERE wechat_id = ?').get(wechatId);
+  await ensureTables();
+  const { rows } = await query('SELECT * FROM customer WHERE wechat_id = $1', [wechatId]);
+  return rows[0] || null;
 }
 
 // ====== Package CRUD ======
-function getAllPackages() {
-  return getDb().prepare('SELECT * FROM package ORDER BY id').all();
+async function getAllPackages() {
+  await ensureTables();
+  const { rows } = await query('SELECT * FROM package ORDER BY id');
+  return rows;
 }
 
 // ====== Ticket CRUD ======
-function getAllTickets() {
-  return getDb().prepare('SELECT * FROM ticket ORDER BY id').all();
+async function getAllTickets() {
+  await ensureTables();
+  const { rows } = await query('SELECT * FROM ticket ORDER BY id');
+  return rows;
 }
 
 // ====== Order CRUD ======
-function getAllOrders() {
-  return getDb().prepare('SELECT * FROM "order" ORDER BY id').all();
+async function getAllOrders() {
+  await ensureTables();
+  const { rows } = await query('SELECT * FROM "order" ORDER BY id');
+  return rows;
 }
 
 // ====== Lead CRUD ======
-function getAllLeads() {
-  return getDb().prepare('SELECT * FROM lead ORDER BY id').all();
+async function getAllLeads() {
+  await ensureTables();
+  const { rows } = await query('SELECT * FROM lead ORDER BY id');
+  return rows;
 }
 
 // ====== Staff CRUD ======
-function getAllStaff() {
-  return getDb().prepare('SELECT * FROM staff ORDER BY id').all();
+async function getAllStaff() {
+  await ensureTables();
+  const { rows } = await query('SELECT * FROM staff ORDER BY id');
+  return rows;
 }
 
 // ====== Read All ======
-function readAllData() {
+async function readAllData() {
+  const [customers, orders, leads, tickets, staffs, pkg] = await Promise.all([
+    getAllCustomers(),
+    getAllOrders(),
+    getAllLeads(),
+    getAllTickets(),
+    getAllStaff(),
+    getAllPackages(),
+  ]);
+
   return {
-    clients: getAllCustomers().map(c => ({
+    clients: customers.map(c => ({
       id: c.id?.toString() || '',
       name: c.name || '',
       phone: c.phone || '',
@@ -208,7 +261,7 @@ function readAllData() {
       createdAt: c.create_time || '',
       salesPersonId: c.sales_person_id || '',
     })),
-    orders: getAllOrders().map(o => ({
+    orders: orders.map(o => ({
       id: o.order_id || o.id?.toString() || '',
       clientId: o.client_id || '',
       clientName: o.client_name || '',
@@ -223,7 +276,7 @@ function readAllData() {
       paidAt: o.paid_at || '',
       salesPersonId: o.sales_person_id || '',
     })),
-    leads: getAllLeads().map(l => ({
+    leads: leads.map(l => ({
       id: l.lead_id || l.id?.toString() || '',
       name: l.name || '',
       phone: l.phone || '',
@@ -235,7 +288,7 @@ function readAllData() {
       createdAt: l.create_time || '',
       updatedAt: l.update_time || '',
     })),
-    tickets: getAllTickets().map(t => ({
+    tickets: tickets.map(t => ({
       id: t.ticket_no || t.id?.toString() || '',
       clientId: t.client_id || '',
       clientName: t.customer_name || '',
@@ -250,7 +303,7 @@ function readAllData() {
       resolvedAt: '',
       resolution: t.handle_note || '',
     })),
-    staff: getAllStaff().map(s => ({
+    staff: staffs.map(s => ({
       id: s.staff_id || s.id?.toString() || '',
       name: s.name || '',
       phone: s.phone || '',
@@ -259,7 +312,7 @@ function readAllData() {
       joinDate: s.join_date || '',
       password: s.password || '',
     })),
-    packages: getAllPackages().map(p => ({
+    packages: pkg.map(p => ({
       id: p.id?.toString() || '',
       name: p.package_name || '',
       speed: p.speed || '',
@@ -273,210 +326,112 @@ function readAllData() {
 }
 
 // ====== Write All ======
-function writeAllData(data) {
-  const _db = getDb();
-  const tx = _db.transaction(() => {
-    // Customers
-    if (data.clients) {
-      _db.prepare('DELETE FROM customer').run();
-      const stmt = _db.prepare(`INSERT INTO customer (name, phone, wechat_id, project_name, building_name, room_no, package_name, package_id, status, expire_time, install_date, sales_person_id, create_time)
-        VALUES (@name, @phone, @phone, @project_name, @building_name, @roomNo, @package_name, @packageId, @status, @expire_time, @installDate, @salesPersonId, @createdAt)`);
-      for (const c of data.clients) {
-        stmt.run({
-          name: c.name || '',
-          phone: c.phone || '',
-          project_name: (c.address || '').split(' ')[0] || '',
-          building_name: (c.address || '').split(' ')[1] || '',
-          roomNo: c.roomNo || '',
-          package_name: c.packageId || '',
-          packageId: c.packageId || '',
-          status: c.status === 'active' || c.status === 'pending_install' ? 1 : c.status === 'cancelled' ? 2 : 0,
-          expire_time: c.expiryDate || null,
-          installDate: c.installDate || '',
-          salesPersonId: c.salesPersonId || '',
-          createdAt: c.createdAt || new Date().toISOString(),
-        });
-      }
+async function writeAllData(data) {
+  await ensureTables();
+  // Customers
+  if (data.clients) {
+    await query('DELETE FROM customer');
+    for (const c of data.clients) {
+      await query(`INSERT INTO customer (name, phone, wechat_id, project_name, building_name, room_no, package_name, package_id, status, expire_time, install_date, sales_person_id, create_time)
+        VALUES ($1, $2, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+        [
+          c.name || '',
+          c.phone || '',
+          (c.address || '').split(' ')[0] || '',
+          (c.address || '').split(' ')[1] || '',
+          c.roomNo || '',
+          c.packageId || '',
+          c.packageId || '',
+          c.status === 'active' || c.status === 'pending_install' ? 1 : c.status === 'cancelled' ? 2 : 0,
+          c.expiryDate || null,
+          c.installDate || '',
+          c.salesPersonId || '',
+          c.createdAt || new Date().toISOString(),
+        ]);
     }
+  }
 
-    // Orders
-    if (data.orders) {
-      _db.prepare('DELETE FROM "order"').run();
-      const stmt = _db.prepare(`INSERT INTO "order" (order_id, client_id, client_name, phone, package_id, package_name, amount, installation_fee, total_amount, status, sales_person_id, paid_at, create_time)
-        VALUES (@order_id, @clientId, @clientName, @phone, @packageId, @packageName, @amount, @installationFee, @totalAmount, @status, @salesPersonId, @paidAt, @createdAt)`);
-      for (const o of data.orders) {
-        stmt.run({
-          order_id: o.id || '',
-          clientId: o.clientId || '',
-          clientName: o.clientName || '',
-          phone: o.phone || '',
-          packageId: o.packageId || '',
-          packageName: o.packageName || '',
-          amount: o.amount || 0,
-          installationFee: o.installationFee || 0,
-          totalAmount: o.totalAmount || 0,
-          status: o.status || 'active',
-          salesPersonId: o.salesPersonId || '',
-          paidAt: o.paidAt || null,
-          createdAt: o.createdAt || new Date().toISOString(),
-        });
-      }
+  // Orders
+  if (data.orders) {
+    await query('DELETE FROM "order"');
+    for (const o of data.orders) {
+      await query(`INSERT INTO "order" (order_id, client_id, client_name, phone, package_id, package_name, amount, installation_fee, total_amount, status, sales_person_id, paid_at, create_time)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+        [
+          o.id || '', o.clientId || '', o.clientName || '', o.phone || '',
+          o.packageId || '', o.packageName || '', o.amount || 0,
+          o.installationFee || 0, o.totalAmount || 0, o.status || 'active',
+          o.salesPersonId || '', o.paidAt || null, o.createdAt || new Date().toISOString(),
+        ]);
     }
+  }
 
-    // Leads
-    if (data.leads) {
-      _db.prepare('DELETE FROM lead').run();
-      const stmt = _db.prepare(`INSERT INTO lead (lead_id, name, phone, address, source, status, notes, assigned_to, create_time, update_time)
-        VALUES (@lead_id, @name, @phone, @address, @source, @status, @notes, @assignedTo, @createdAt, @updatedAt)`);
-      for (const l of data.leads) {
-        stmt.run({
-          lead_id: l.id || '',
-          name: l.name || '',
-          phone: l.phone || '',
-          address: l.address || '',
-          source: l.source || 'online',
-          status: l.status || 'new',
-          notes: l.notes || '',
-          assignedTo: l.assignedTo || '',
-          createdAt: l.createdAt || new Date().toISOString(),
-          updatedAt: l.updatedAt || l.createdAt || new Date().toISOString(),
-        });
-      }
+  // Leads
+  if (data.leads) {
+    await query('DELETE FROM lead');
+    for (const l of data.leads) {
+      await query(`INSERT INTO lead (lead_id, name, phone, address, source, status, notes, assigned_to, create_time, update_time)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          l.id || '', l.name || '', l.phone || '', l.address || '',
+          l.source || 'online', l.status || 'new', l.notes || '',
+          l.assignedTo || '', l.createdAt || new Date().toISOString(),
+          l.updatedAt || l.createdAt || new Date().toISOString(),
+        ]);
     }
+  }
 
-    // Tickets
-    if (data.tickets) {
-      _db.prepare('DELETE FROM ticket').run();
-      const stmt = _db.prepare(`INSERT INTO ticket (ticket_no, client_id, customer_name, phone, issue_type, problem, priority, status, handler, handle_note, create_time)
-        VALUES (@ticket_no, @clientId, @customer_name, @phone, @issue_type, @problem, @priority, @status, @handler, @handle_note, @createdAt)`);
-      for (const t of data.tickets) {
-        stmt.run({
-          ticket_no: t.id || '',
-          clientId: t.clientId || '',
-          customer_name: t.clientName || '',
-          phone: t.phone || '',
-          issue_type: t.issueType || '',
-          problem: t.description || '',
-          priority: t.priority || 'medium',
-          status: ['pending', 'assigned', 'in_progress', 'resolved', 'closed'].indexOf(t.status),
-          handler: t.assignedTo || '',
-          handle_note: t.resolution || '',
-          createdAt: t.createdAt || new Date().toISOString(),
-        });
-      }
+  // Tickets
+  if (data.tickets) {
+    await query('DELETE FROM ticket');
+    for (const t of data.tickets) {
+      const statusIdx = ['pending', 'assigned', 'in_progress', 'resolved', 'closed'].indexOf(t.status);
+      await query(`INSERT INTO ticket (ticket_no, client_id, customer_name, phone, issue_type, problem, priority, status, handler, handle_note, create_time)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [
+          t.id || '', t.clientId || '', t.clientName || '', t.phone || '',
+          t.issueType || '', t.description || '', t.priority || 'medium',
+          statusIdx >= 0 ? statusIdx : 0,
+          t.assignedTo || '', t.resolution || '',
+          t.createdAt || new Date().toISOString(),
+        ]);
     }
+  }
 
-    // Staff
-    if (data.staff) {
-      _db.prepare('DELETE FROM staff').run();
-      const stmt = _db.prepare(`INSERT INTO staff (staff_id, name, phone, role, status, join_date, password, create_time)
-        VALUES (@staff_id, @name, @phone, @role, @status, @joinDate, @password, @createdAt)`);
-      for (const s of data.staff) {
-        stmt.run({
-          staff_id: s.id || '',
-          name: s.name || '',
-          phone: s.phone || '',
-          role: s.role || '',
-          status: s.status || 'active',
-          joinDate: s.joinDate || '',
-          password: s.password || '',
-          createdAt: s.createdAt || new Date().toISOString(),
-        });
-      }
+  // Staff
+  if (data.staff) {
+    await query('DELETE FROM staff');
+    for (const s of data.staff) {
+      await query(`INSERT INTO staff (staff_id, name, phone, role, status, join_date, password, create_time)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          s.id || '', s.name || '', s.phone || '', s.role || '',
+          s.status || 'active', s.joinDate || '', s.password || '',
+          s.createdAt || new Date().toISOString(),
+        ]);
     }
+  }
 
-    // Packages
-    if (data.packages) {
-      _db.prepare('DELETE FROM package').run();
-      const stmt = _db.prepare(`INSERT INTO package (package_name, speed, duration_months, price, installation_fee, total_price, features, description, status)
-        VALUES (@package_name, @speed, @durationMonths, @price, @installationFee, @totalPrice, @features, @description, 1)`);
-      for (const p of data.packages) {
-        stmt.run({
-          package_name: p.name || '',
-          speed: p.speed || '',
-          durationMonths: p.durationMonths || 6,
-          price: p.price || 0,
-          installationFee: p.installationFee || 0,
-          totalPrice: p.totalPrice || 0,
-          features: JSON.stringify(p.features || []),
-          description: p.description || '',
-        });
-      }
+  // Packages
+  if (data.packages) {
+    await query('DELETE FROM package');
+    for (const p of data.packages) {
+      await query(`INSERT INTO package (package_name, speed, duration_months, price, installation_fee, total_price, features, description, status)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1)`,
+        [
+          p.name || '', p.speed || '', p.durationMonths || 6,
+          p.price || 0, p.installationFee || 0, p.totalPrice || 0,
+          JSON.stringify(p.features || []), p.description || '',
+        ]);
     }
-  });
-  tx();
+  }
 }
 
-// ====== Excel Import ======
-function importFromExcel() {
-  const XLSX = require('xlsx');
-  const excelFiles = [
-    { name: '客户信息', key: 'clients' },
-    { name: '订单记录', key: 'orders' },
-    { name: '销售线索', key: 'leads' },
-    { name: '维护工单', key: 'tickets' },
-    { name: '员工信息', key: 'staff' },
-    { name: '套餐配置', key: 'packages' },
-  ];
-
-  const data = {};
-  for (const f of excelFiles) {
-    const fp = path.join(DATA_DIR, `${f.name}.xlsx`);
-    if (fs.existsSync(fp)) {
-      const wb = XLSX.readFile(fp);
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      data[f.key] = XLSX.utils.sheet_to_json(ws, { defval: '' });
-    }
-  }
-
-  if (Object.keys(data).length > 0) {
-    writeAllData(data);
-    console.log('  ✓ Excel 数据已导入 SQLite');
-    return true;
-  }
-  return false;
-}
-
-// ====== Export to Excel ======
-function exportToExcel() {
-  const XLSX = require('xlsx');
-  const data = readAllData();
-  const fileDefs = [
-    { name: '客户信息', data: data.clients, cols: ['id', 'name', 'phone', 'address', 'roomNo', 'packageId', 'status', 'installDate', 'expiryDate', 'createdAt', 'salesPersonId'] },
-    { name: '订单记录', data: data.orders, cols: ['id', 'clientId', 'clientName', 'phone', 'packageId', 'packageName', 'amount', 'installationFee', 'totalAmount', 'status', 'createdAt', 'paidAt', 'salesPersonId'] },
-    { name: '销售线索', data: data.leads, cols: ['id', 'name', 'phone', 'address', 'source', 'status', 'notes', 'assignedTo', 'createdAt', 'updatedAt'] },
-    { name: '维护工单', data: data.tickets, cols: ['id', 'clientId', 'clientName', 'phone', 'address', 'issueType', 'description', 'priority', 'status', 'assignedTo', 'createdAt', 'resolvedAt', 'resolution'] },
-    { name: '员工信息', data: data.staff, cols: ['id', 'name', 'phone', 'role', 'status', 'joinDate', 'password'] },
-    { name: '套餐配置', data: (data.packages || []).map(p => ({ ...p, features: JSON.stringify(p.features) })), cols: ['id', 'name', 'speed', 'durationMonths', 'price', 'installationFee', 'totalPrice', 'features'] },
-  ];
-
-  const results = {};
-  for (const f of fileDefs) {
-    const ws = XLSX.utils.json_to_sheet(f.data, { header: f.cols });
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-    results[f.name] = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-  }
-  return results;
-}
-
-// ====== Seed / import data on startup ======
-function seedIfEmpty() {
-  // 优先从 Excel 导入（Excel 是管理员手动编辑的数据源）
-  const hasExcel = fs.existsSync(DATA_DIR) && fs.readdirSync(DATA_DIR).some(f => f.endsWith('.xlsx'));
-  if (hasExcel) {
-    const ordersCount = getDb().prepare('SELECT COUNT(*) as c FROM "order"').get().c;
-    // 只有订单/线索等表为空时才从 Excel 导入（避免覆盖已有数据）
-    if (ordersCount === 0) {
-      console.log('  ✓ 检测到 Excel 数据文件，正在导入 SQLite...');
-      importFromExcel();
-      return;
-    }
-    return;
-  }
-
-  const count = getDb().prepare('SELECT COUNT(*) as c FROM customer').get().c;
-  if (count > 0) return;
+// ====== Seed Data ======
+async function seedIfEmpty() {
+  await ensureTables();
+  const { rows } = await query('SELECT COUNT(*)::int as c FROM customer');
+  if (rows[0].c > 0) return;
 
   const SEED = {
     clients: [
@@ -522,16 +477,15 @@ function seedIfEmpty() {
     ],
   };
 
-  writeAllData(SEED);
-  console.log('  ✓ 默认种子数据已写入 SQLite');
+  await writeAllData(SEED);
+  console.log('  ✓ 默认种子数据已写入 PostgreSQL');
 }
 
 module.exports = {
-  getDb,
+  getPool,
+  query,
   readAllData,
   writeAllData,
-  importFromExcel,
-  exportToExcel,
   seedIfEmpty,
   getAllCustomers,
   getCustomerByPhone,
