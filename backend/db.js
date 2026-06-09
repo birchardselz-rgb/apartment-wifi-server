@@ -158,6 +158,19 @@ async function initTables() {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_ticket_no ON ticket(ticket_no);
     CREATE INDEX IF NOT EXISTS idx_ticket_status ON ticket(status);
     CREATE INDEX IF NOT EXISTS idx_ticket_wechat ON ticket(wechat_id);
+
+    CREATE TABLE IF NOT EXISTS landlord (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL DEFAULT '',
+      contact TEXT NOT NULL DEFAULT '',
+      phone TEXT NOT NULL DEFAULT '',
+      address TEXT DEFAULT '',
+      status INTEGER DEFAULT 1,
+      share_ratio REAL DEFAULT 0,
+      remark TEXT DEFAULT '',
+      create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // 确保扩展字段存在
@@ -481,6 +494,39 @@ async function seedIfEmpty() {
   console.log('  ✓ 默认种子数据已写入 PostgreSQL');
 }
 
+// ====== Landlord CRUD ======
+async function getAllLandlords() {
+  await ensureTables();
+  const { rows } = await query('SELECT * FROM landlord ORDER BY id');
+  return rows;
+}
+
+async function getLandlordById(id) {
+  await ensureTables();
+  const { rows } = await query('SELECT * FROM landlord WHERE id = $1', [id]);
+  return rows[0] || null;
+}
+
+async function createLandlord(data) {
+  await ensureTables();
+  const { rows } = await query(`INSERT INTO landlord (name, contact, phone, address, status, share_ratio, remark)
+    VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [data.name, data.contact || '', data.phone || '', data.address || '', data.status ?? 1, data.shareRatio || 0, data.remark || '']);
+  return rows[0];
+}
+
+async function updateLandlord(id, data) {
+  await ensureTables();
+  const { rows } = await query(`UPDATE landlord SET name=$1, contact=$2, phone=$3, address=$4, status=$5, share_ratio=$6, remark=$7 WHERE id=$8 RETURNING *`,
+    [data.name, data.contact || '', data.phone || '', data.address || '', data.status ?? 1, data.shareRatio || 0, data.remark || '', id]);
+  return rows[0];
+}
+
+async function deleteLandlord(id) {
+  await ensureTables();
+  await query('DELETE FROM landlord WHERE id = $1', [id]);
+}
+
 module.exports = {
   getPool,
   query,
@@ -495,4 +541,9 @@ module.exports = {
   getAllOrders,
   getAllLeads,
   getAllStaff,
+  getAllLandlords,
+  getLandlordById,
+  createLandlord,
+  updateLandlord,
+  deleteLandlord,
 };
