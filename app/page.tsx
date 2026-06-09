@@ -23,11 +23,9 @@ import type { SalesLead, BroadbandPackage, Client, Order, DashboardStats, Ticket
 // Tab definitions
 // ============================================================
 const TABS = [
-  { id: 'client',      label: '客户端',     icon: Wifi,      color: 'from-cyan-500 to-blue-600',     activeColor: 'text-cyan-400' },
-  { id: 'sales',       label: '销售端',     icon: TrendingUp, color: 'from-emerald-500 to-teal-600',  activeColor: 'text-emerald-400' },
-  { id: 'maintenance', label: '维护端',     icon: Wrench,     color: 'from-amber-500 to-orange-600',  activeColor: 'text-amber-400' },
-  { id: 'admin',       label: '后台数据端', icon: BarChart3,  color: 'from-purple-500 to-pink-600',   activeColor: 'text-purple-400' },
-  { id: 'system',      label: '系统管理',   icon: Shield,     color: 'from-red-500 to-rose-600',      activeColor: 'text-red-400' },
+  { id: 'client',      label: '客户端',       icon: Wifi,      color: 'from-cyan-500 to-blue-600',     activeColor: 'text-cyan-400' },
+  { id: 'sales-maint', label: '销售维护端',   icon: Wrench,     color: 'from-emerald-500 to-teal-600',  activeColor: 'text-emerald-400' },
+  { id: 'data-mgmt',   label: '后台数据管理端', icon: BarChart3,  color: 'from-purple-500 to-pink-600',   activeColor: 'text-purple-400' },
 ];
 
 const ISSUE_TYPES = [
@@ -1415,6 +1413,52 @@ function SystemTab() {
 }
 
 // ============================================================
+// 销售维护端（合并销售端+维护端）
+// ============================================================
+function SalesMaintenanceTab() {
+  const [subTab, setSubTab] = useState<'sales' | 'maintenance'>('sales');
+  return (
+    <div>
+      <div className="flex bg-[#131B2E] mx-4 mt-3 rounded-xl p-1 border border-gray-800">
+        <button onClick={() => setSubTab('sales')}
+          className={'flex-1 py-2 text-sm font-semibold rounded-lg transition-all ' + (subTab === 'sales' ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-lg' : 'text-gray-500')}>
+          销售端
+        </button>
+        <button onClick={() => setSubTab('maintenance')}
+          className={'flex-1 py-2 text-sm font-semibold rounded-lg transition-all ' + (subTab === 'maintenance' ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg' : 'text-gray-500')}>
+          维护端
+        </button>
+      </div>
+      <div className={subTab !== 'sales' ? 'hidden' : ''}><SalesTab /></div>
+      <div className={subTab !== 'maintenance' ? 'hidden' : ''}><MaintenanceTab /></div>
+    </div>
+  );
+}
+
+// ============================================================
+// 后台数据管理端（合并后台数据端+系统管理）
+// ============================================================
+function DataManagementTab() {
+  const [subTab, setSubTab] = useState<'admin' | 'system'>('admin');
+  return (
+    <div>
+      <div className="flex bg-[#131B2E] mx-4 mt-3 rounded-xl p-1 border border-gray-800">
+        <button onClick={() => setSubTab('admin')}
+          className={'flex-1 py-2 text-sm font-semibold rounded-lg transition-all ' + (subTab === 'admin' ? 'bg-gradient-to-r from-purple-500 to-pink-600 text-white shadow-lg' : 'text-gray-500')}>
+          后台数据
+        </button>
+        <button onClick={() => setSubTab('system')}
+          className={'flex-1 py-2 text-sm font-semibold rounded-lg transition-all ' + (subTab === 'system' ? 'bg-gradient-to-r from-red-500 to-rose-600 text-white shadow-lg' : 'text-gray-500')}>
+          系统管理
+        </button>
+      </div>
+      <div className={subTab !== 'admin' ? 'hidden' : ''}><AdminTab /></div>
+      <div className={subTab !== 'system' ? 'hidden' : ''}><SystemTab /></div>
+    </div>
+  );
+}
+
+// ============================================================
 // Main App
 // ============================================================
 export default function HomePage() {
@@ -1480,10 +1524,8 @@ export default function HomePage() {
     <div className="max-w-md mx-auto min-h-screen bg-[#0B0F19] pb-16">
       {/* Content area */}
       {tab === 'client' && <ClientTab />}
-      <div className={tab !== 'sales' ? 'hidden' : ''}><SalesTab /></div>
-      <div className={tab !== 'maintenance' ? 'hidden' : ''}><MaintenanceTab /></div>
-      <div className={tab !== 'admin' ? 'hidden' : ''}><AdminTab /></div>
-      <div className={tab !== 'system' ? 'hidden' : ''}><SystemTab /></div>
+      {tab === 'sales-maint' && <SalesMaintenanceTab />}
+      {tab === 'data-mgmt' && <DataManagementTab />}
 
       {/* Bottom Navigation */}
       <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 max-w-md w-full z-50">
