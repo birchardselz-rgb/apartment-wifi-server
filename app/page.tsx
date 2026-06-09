@@ -1537,13 +1537,7 @@ export default function HomePage() {
               const colorClass = isActive ? t.activeColor : 'text-gray-500';
               const boxClass = isActive ? 'bg-gradient-to-br ' + t.color + ' shadow-lg shadow-orange-500/10 scale-110' : '';
               return (
-                <button key={t.id} onClick={() => {
-                  if (t.id === 'client') {
-                    setTab('client');
-                  } else {
-                    router.push('/' + t.id + '/');
-                  }
-                }}
+                <button key={t.id} onClick={() => setTab(t.id)}
                   className={'flex flex-col items-center justify-center py-1.5 px-3 min-w-0 transition-all duration-200 ' + colorClass}>
                   <div className={'w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-300 ' + boxClass}>
                     <Icon className={'w-5 h-5 transition-all duration-200 ' + (isActive ? 'text-white' : 'text-gray-500')} />
