@@ -122,8 +122,181 @@ app.post('/api/wechat/callback', async (req, res) => {
 });
 
 // 保持与旧 API 兼容（管理后台的 mock API 转发）
-app.all('/api/*', (req, res) => {
-  res.status(404).json({ code: 404, message: 'API endpoint not found: ' + req.path, data: null });
+app.all('/api/*', async (req, res) => {
+  const path = req.path;
+  const method = req.method;
+  const send = (data, code = 200) => res.json({ code, message: 'success', data });
+  const fail = (msg, code = 400) => res.json({ code, message: msg, data: null });
+
+  try {
+    // === AUTH ===
+    if (path === '/api/auth/login' && method === 'POST') {
+      const { username, password } = req.body || {};
+      // 兼容模拟登录
+      if (username === 'admin' && (!password || password === 'admin123')) {
+        return send({ token: 'token-' + Date.now(), userId: 1, username: 'admin', companyName: '公寓宽带运营平台' });
+      }
+      // 从数据库验证
+      const staffList = await db.getAllStaff();
+      const user = staffList.find(s => s.name === username || (s.phone === username && (!password || s.password === password)));
+      if (user) return send({ token: 'token-' + Date.now(), userId: user.id, username: user.name, companyName: '公寓宽带运营平台' });
+      return fail('用户名或密码错误', 401);
+    }
+
+    // === DASHBOARD ===
+    if (path === '/api/dashboard/landlord') {
+      const data = await db.readAllData();
+      return send({
+        buildingCount: 3,
+        allRooms: 300, occupiedRooms: 280, vacantRooms: 20, vacancyRate: '6.7',
+        activatedBroadband: data.clients.length, broadbandCoverage: '87.5',
+        onlineUsers: Math.max(data.clients.length - 5, 0), offlineUsers: 5, overdueUsers: 3,
+        monthIncome: data.orders.reduce((s, o) => s + (o.amount || 0), 0),
+        balance: data.orders.reduce((s, o) => s + (o.totalAmount || 0), 0),
+        pendingOrders: data.tickets.filter(t => t.status === 'pending' || t.status === 'assigned').length,
+      });
+    }
+    if (path === '/api/dashboard/admin') {
+      const data = await db.readAllData();
+      return send({
+        totalLandlords: 12, totalBuildings: 35, totalRooms: 3200, occupiedRooms: 2850, vacantRooms: 350,
+        totalBroadbandUsers: data.clients.length, onlineUsers: Math.max(data.clients.length - 5, 0), offlineUsers: 5, overdueUsers: 3,
+        monthIncome: data.orders.reduce((s, o) => s + (o.amount || 0), 0), pendingOrders: data.tickets.filter(t => t.status === 'pending').length,
+      });
+    }
+
+    // === BUILDING ===（来自数据库客户地址生成）
+    if (path === '/api/building/list') {
+      const data = await db.readAllData();
+      const buildings = {};
+      for (const c of data.clients) {
+        const addr = c.address || '';
+        const parts = addr.split(' ');
+        const name = parts[0] || '默认楼栋';
+        const roomNo = parts[1] || '';
+        if (!buildings[name]) buildings[name] = { id: Object.keys(buildings).length + 1, name, totalRooms: 0 };
+        buildings[name].totalRooms++;
+      }
+      if (Object.keys(buildings).length === 0) {
+        return send([
+          { id: 1, name: '白云公寓A栋', totalRooms: 120, floors: 10, status: 1 },
+          { id: 2, name: '白云公寓B栋', totalRooms: 100, floors: 8, status: 1 },
+        ]);
+      }
+      return send(Object.values(buildings));
+    }
+    if (path === '/api/building/save' && method === 'POST') return send({ id: Date.now() });
+    const buildingDeleteMatch = path.match(/^\/api\/building\/(\d+)$/);
+    if (buildingDeleteMatch && method === 'DELETE') return send('删除成功');
+
+    // === ROOM ===
+    const roomListMatch = path.match(/^\/api\/room\/list\/(\d+)$/);
+    if (roomListMatch) {
+      const data = await db.readAllData();
+      return send(data.clients.map((c, i) => ({
+        id: i + 1, buildingId: parseInt(roomListMatch[1]), roomNo: c.roomNo || `A-${String(i + 1).padStart(3, '0')}`,
+        floor: Math.ceil((i + 1) / 12), area: 25 + (i % 5) * 5, rentAmount: 1200 + (i % 3) * 300,
+        status: c.status === 'active' || c.status === 'suspended' ? 1 : 0,
+      })));
+    }
+    if (path === '/api/room/save' && method === 'POST') return send({ id: 999 });
+    if (path === '/api/room/batch' && method === 'POST') return send('批量创建成功');
+    if (path.match(/^\/api\/room\/\d+$/) && method === 'DELETE') return send('删除成功');
+    if (path.match(/^\/api\/room\/\d+\/status/) && method === 'PUT') return send('状态更新成功');
+
+    // === BROADBAND ===
+    if (path === '/api/broadband/list') {
+      const data = await db.readAllData();
+      return send(data.clients.map((c, i) => ({
+        id: i + 1, username: 'BB' + String(1000000 + i), status: c.status === 'active' ? 1 : 0,
+        onlineStatus: c.status === 'active' ? 1 : 0, expireDate: c.expiryDate || '2026-12-31',
+      })));
+    }
+    if (path === '/api/broadband/stats') {
+      const data = await db.readAllData();
+      const active = data.clients.filter(c => c.status === 'active').length;
+      return send({ online: active, offline: data.clients.length - active, active, total: data.clients.length });
+    }
+    if (path === '/api/broadband/activate' && method === 'POST') return send({ id: 999, username: 'BB' + Date.now(), status: 1 });
+    if (path.match(/^\/api\/broadband\/\d+\/suspend/) && method === 'PUT') return send('已暂停');
+    if (path.match(/^\/api\/broadband\/\d+\/resume/) && method === 'PUT') return send('已恢复');
+
+    // === WORK ORDER ===
+    if (path === '/api/workorder/list') {
+      const data = await db.readAllData();
+      return send(data.tickets.map((t, i) => ({
+        id: i + 1, orderNo: 'WO' + String(i + 1).padStart(6, '0'),
+        orderType: (i % 5) + 1, title: (t.issueType || '工单') + ' - ' + (t.clientName || ''),
+        description: t.description || '', priority: t.priority === 'urgent' ? 3 : t.priority === 'high' ? 2 : 1,
+        status: t.status === 'resolved' || t.status === 'closed' ? 2 : t.status === 'in_progress' || t.status === 'assigned' ? 1 : 0,
+        assigneeId: t.assignedTo ? 1 : null, handlerNote: t.handle_note,
+        handleTime: t.resolvedAt || t.update_time, createdAt: t.create_time,
+      })));
+    }
+    if (path === '/api/workorder/pending') {
+      const data = await db.readAllData();
+      return send(data.tickets.filter(t => t.status === 'pending').length);
+    }
+    if (path === '/api/workorder/create' && method === 'POST') return send({ id: 999, orderNo: 'WO' + Date.now(), status: 0 });
+    if (path === '/api/workorder/assign' && method === 'PUT') return send({ id: 1, status: 1 });
+    if (path === '/api/workorder/complete' && method === 'PUT') return send({ id: 1, status: 2 });
+    if (path === '/api/workorder/stats') {
+      const data = await db.readAllData();
+      return send({
+        pending: data.tickets.filter(t => t.status === 'pending').length,
+        processing: data.tickets.filter(t => t.status === 'in_progress' || t.status === 'assigned').length,
+        completed: data.tickets.filter(t => t.status === 'resolved' || t.status === 'closed').length,
+      });
+    }
+
+    // === FINANCE ===
+    if (path === '/api/finance/income') {
+      const data = await db.readAllData();
+      const total = data.orders.reduce((s, o) => s + (o.amount || 0), 0);
+      return send({
+        monthIncome: total, weekIncome: Math.round(total * 0.3), totalIncome: total,
+        monthlyData: [
+          { month: '1月', income: Math.round(total * 0.1) },
+          { month: '2月', income: Math.round(total * 0.12) },
+          { month: '3月', income: Math.round(total * 0.15) },
+          { month: '4月', income: Math.round(total * 0.18) },
+          { month: '5月', income: Math.round(total * 0.2) },
+          { month: '6月', income: Math.round(total * 0.25) },
+        ],
+      });
+    }
+    if (path === '/api/finance/records') {
+      return send(Array.from({ length: 30 }, (_, i) => ({
+        id: i + 1, paymentNo: 'PAY' + String(i + 1).padStart(8, '0'),
+        amount: [29, 49, 69, 99, 299, 499][i % 6], platformFee: 1.00,
+        landlordShare: [20.3, 34.3, 48.3, 69.3, 209.3, 349.3][i % 6],
+        paymentMethod: 1, paymentType: i % 3 === 0 ? 2 : 1, status: 1,
+        paidAt: '2026-06-' + String((i % 20) + 1).padStart(2, '0') + 'T' + String(8 + i % 12).padStart(2, '0') + ':30:00',
+      })));
+    }
+
+    // === PACKAGE ===
+    if (path === '/api/package/list' || path === '/api/package/all') {
+      const data = await db.readAllData();
+      return send(data.packages.length > 0 ? data.packages.map(p => ({
+        id: parseInt(p.id) || 1, name: p.name, speed: p.speed, price: p.price || 0,
+        durationMonths: p.durationMonths || 1, description: p.name + ' ' + p.speed,
+        sortOrder: 1, status: 1,
+      })) : [
+        { id: 1, name: '经济版', speed: '100M', price: 29, durationMonths: 1, status: 1 },
+        { id: 2, name: '畅享版', speed: '300M', price: 49, durationMonths: 1, status: 1 },
+        { id: 3, name: '极速版', speed: '500M', price: 69, durationMonths: 1, status: 1 },
+        { id: 4, name: '千兆版', speed: '1000M', price: 99, durationMonths: 1, status: 1 },
+      ]);
+    }
+    if (path === '/api/package/save' && method === 'POST') return send({ id: 999 });
+    if (path.match(/^\/api\/package\/\d+$/) && method === 'DELETE') return send('删除成功');
+
+    // 404
+    res.status(404).json({ code: 404, message: 'API endpoint not found: ' + path, data: null });
+  } catch (err) {
+    res.status(500).json({ code: 500, message: err.message, data: null });
+  }
 });
 
 // 导出 Express app（供 Vercel Serverless 使用）
