@@ -257,6 +257,40 @@ async function getAllTickets() {
   return rows;
 }
 
+async function createTicket(data) {
+  await ensureTables();
+  const ticketNo = 'TK' + String(Date.now()).slice(-6);
+  const { rows } = await query(
+    `INSERT INTO ticket (ticket_no, client_id, customer_name, phone, room_no, issue_type, problem, priority, status, handler, create_time)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW()) RETURNING *`,
+    [ticketNo, data.clientId || '', data.customerName || '', data.phone || '',
+     data.roomNo || '', data.issueType || '', data.problem || data.description || '',
+     data.priority || 'medium', data.status ?? 0, data.handler || '']
+  );
+  return rows[0];
+}
+
+async function updateTicket(id, data) {
+  await ensureTables();
+  const fields = [];
+  const values = [];
+  let idx = 1;
+  for (const [key, val] of Object.entries(data)) {
+    const col = { clientId: 'client_id', customerName: 'customer_name', phone: 'phone',
+      roomNo: 'room_no', issueType: 'issue_type', problem: 'problem', priority: 'priority',
+      status: 'status', handler: 'handler', handleNote: 'handle_note', resolution: 'handle_note',
+      resolvedAt: 'resolved_at' }[key] || key;
+    fields.push(`${col}=$${idx}`);
+    values.push(val);
+    idx++;
+  }
+  if (fields.length === 0) return;
+  values.push(id);
+  await query(`UPDATE ticket SET ${fields.join(',')}, update_time=NOW() WHERE id=$${idx}`, values);
+  const { rows } = await query('SELECT * FROM ticket WHERE id = $1', [id]);
+  return rows[0];
+}
+
 // ====== Order CRUD ======
 async function getAllOrders() {
   await ensureTables();
@@ -661,6 +695,8 @@ module.exports = {
   getCustomerByWechat,
   getAllPackages,
   getAllTickets,
+  createTicket,
+  updateTicket,
   getAllOrders,
   getAllLeads,
   getAllStaff,

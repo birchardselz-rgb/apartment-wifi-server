@@ -407,33 +407,60 @@ app.all('/api/*', async (req, res) => {
 
     // WORKORDER
     if (path === '/api/workorder/list') {
-      const data = await db.readAllData();
-      return send(data.tickets.length > 0 ? data.tickets.map((t, i) => ({
-        id: i + 1, orderNo: 'WO' + String(i + 1).padStart(6, '0'),
-        orderType: (i % 5) + 1, title: (t.issueType || '工单') + ' - ' + (t.clientName || ''),
-        description: t.description || '', priority: t.priority === 'urgent' ? 3 : t.priority === 'high' ? 2 : 1,
-        status: t.status === 'resolved' || t.status === 'closed' ? 2 : t.status === 'in_progress' || t.status === 'assigned' ? 1 : 0,
-        assigneeId: t.assignedTo ? 1 : null, handlerNote: t.handle_note, createdAt: t.create_time,
-      })) : [
-        { id: 1, orderNo: 'WO2026060001', orderType: 1, title: '网络故障 - 陈先生', priority: 3, status: 1, createdAt: '2026-06-08' },
-        { id: 2, orderNo: 'WO2026060002', orderType: 2, title: '宽带慢 - 李女士', priority: 2, status: 0, createdAt: '2026-06-07' },
-        { id: 3, orderNo: 'WO2026060003', orderType: 3, title: '新装宽带 - 赵先生', priority: 1, status: 0, createdAt: '2026-06-06' },
-      ]);
+      const tickets = await db.getAllTickets();
+      const allStaff = await db.getAllStaff();
+      const operators = allStaff.filter(s => s.role === 'maintenance' || s.role === 'admin');
+      if (tickets.length === 0) {
+        return send([]);
+      }
+      return send(tickets.map(t => ({
+        id: t.id, orderNo: t.ticket_no,
+        orderType: t.issue_type === 'no_connection' ? 3 : t.issue_type === 'slow_speed' ? 3 : t.issue_type === 'equipment_fault' ? 3 : t.issue_type === 'installation' ? 1 : t.issue_type === 'other' ? 5 : 5,
+        title: (t.issue_type || '工单') + ' - ' + (t.customer_name || ''),
+        description: t.problem || '', priority: t.priority === 'urgent' ? 3 : t.priority === 'high' ? 2 : 1,
+        status: t.status >= 3 ? 2 : t.status >= 1 ? 1 : 0,
+        assigneeId: t.handler || null, handlerNote: t.handle_note || '',
+        createdAt: t.create_time ? new Date(t.create_time).toISOString().replace('T', ' ').substring(0, 19) : '',
+      })));
     }
     if (path === '/api/workorder/pending') {
-      const data = await db.readAllData();
-      return send(data.tickets.filter(t => t.status === 'pending').length || 3);
+      const rows = await db.query('SELECT COUNT(*)::int as c FROM ticket WHERE status = 0');
+      return send(rows.rows[0]?.c || 0);
     }
-    if (path === '/api/workorder/create' && method === 'POST') return send({ id: 999, orderNo: 'WO' + Date.now(), status: 0 });
-    if (path === '/api/workorder/assign' && method === 'PUT') return send({ id: 1, status: 1 });
-    if (path === '/api/workorder/complete' && method === 'PUT') return send({ id: 1, status: 2 });
-    if (path === '/api/workorder/stats') {
-      const data = await db.readAllData();
-      return send({
-        pending: data.tickets.filter(t => t.status === 'pending').length || 3,
-        processing: data.tickets.filter(t => t.status === 'in_progress').length || 2,
-        completed: data.tickets.filter(t => t.status === 'resolved').length || 1,
+    if (path === '/api/workorder/create' && method === 'POST') {
+      const body = req.body;
+      const ticket = await db.createTicket({
+        issueType: ['','new_install','relocation','fault','removal','consultation'][body.orderType] || 'fault',
+        problem: body.description || body.title || '',
+        customerName: body.customerName || '',
+        phone: body.phone || '',
+        roomNo: body.roomNo || '',
+        clientId: body.clientId || '',
+        priority: body.priority === 3 ? 'urgent' : body.priority === 2 ? 'high' : 'medium',
+        status: 0,
       });
+      return send({ id: ticket.id, orderNo: ticket.ticket_no, status: 0 });
+    }
+    if (path === '/api/workorder/assign' && method === 'PUT') {
+      const { orderId, operatorId } = req.body;
+      const staffList = await db.getAllStaff();
+      const operator = staffList.find(s => s.id === parseInt(operatorId));
+      await db.updateTicket(parseInt(orderId), { handler: operator?.name || operatorId, status: 1 });
+      return send({ id: orderId, status: 1 });
+    }
+    if (path === '/api/workorder/complete' && method === 'PUT') {
+      const { orderId, note } = req.body;
+      await db.updateTicket(parseInt(orderId), { handleNote: note || '已完成处理', status: 3, resolvedAt: new Date().toISOString() });
+      return send({ id: orderId, status: 2 });
+    }
+    if (path === '/api/workorder/stats') {
+      const result = await db.query(`SELECT
+        COALESCE(SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END), 0) as pending,
+        COALESCE(SUM(CASE WHEN status IN (1,2) THEN 1 ELSE 0 END), 0) as processing,
+        COALESCE(SUM(CASE WHEN status >= 3 THEN 1 ELSE 0 END), 0) as completed
+        FROM ticket`);
+      const r = result.rows[0] || { pending: 0, processing: 0, completed: 0 };
+      return send({ pending: parseInt(r.pending) || 3, processing: parseInt(r.processing) || 2, completed: parseInt(r.completed) || 1 });
     }
 
     // FINANCE
