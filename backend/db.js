@@ -183,6 +183,23 @@ async function initTables() {
       create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS broadband_account (
+      id SERIAL PRIMARY KEY,
+      customer_id INTEGER NOT NULL DEFAULT 0,
+      landlord_id INTEGER NOT NULL DEFAULT 0,
+      package_id INTEGER DEFAULT 0,
+      account_no TEXT NOT NULL DEFAULT '',
+      mac_address TEXT DEFAULT '',
+      ip_address TEXT DEFAULT '',
+      status INTEGER DEFAULT 1,
+      online_status INTEGER DEFAULT 0,
+      expire_date DATE,
+      bandwidth_limit BIGINT DEFAULT 0,
+      last_login_time TIMESTAMP,
+      create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // 确保扩展字段存在（兼容旧表）
@@ -454,6 +471,46 @@ async function writeAllData(data) {
   }
 }
 
+// ====== Broadband Account CRUD ======
+async function getAllBroadbandAccounts() {
+  await ensureTables();
+  const { rows } = await query('SELECT * FROM broadband_account ORDER BY id');
+  return rows;
+}
+
+async function getBroadbandAccountsByLandlord(landlordId) {
+  await ensureTables();
+  const { rows } = await query('SELECT * FROM broadband_account WHERE landlord_id = $1 ORDER BY id', [landlordId]);
+  return rows;
+}
+
+async function createBroadbandAccount(data) {
+  await ensureTables();
+  const { rows } = await query(
+    `INSERT INTO broadband_account (customer_id, landlord_id, package_id, account_no, mac_address, ip_address, status, online_status, expire_date, bandwidth_limit)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+    [data.customerId || 0, data.landlordId || 0, data.packageId || 0, data.accountNo || '',
+     data.macAddress || '', data.ipAddress || '', data.status ?? 1, data.onlineStatus ?? 0,
+     data.expireDate || null, data.bandwidthLimit || 0]
+  );
+  return rows[0];
+}
+
+async function updateBroadbandAccount(id, data) {
+  await ensureTables();
+  const { rows } = await query(
+    `UPDATE broadband_account SET status=$1, mac_address=$2, ip_address=$3, package_id=$4, expire_date=$5, online_status=$6 WHERE id=$7 RETURNING *`,
+    [data.status ?? 1, data.macAddress || '', data.ipAddress || '', data.packageId || 0,
+     data.expireDate || null, data.onlineStatus ?? 0, id]
+  );
+  return rows[0];
+}
+
+async function deleteBroadbandAccount(id) {
+  await ensureTables();
+  await query('DELETE FROM broadband_account WHERE id = $1', [id]);
+}
+
 // ====== Building CRUD ======
 async function getAllBuildings() {
   await ensureTables();
@@ -617,4 +674,9 @@ module.exports = {
   createBuilding,
   updateBuilding,
   deleteBuilding,
+  getAllBroadbandAccounts,
+  getBroadbandAccountsByLandlord,
+  createBroadbandAccount,
+  updateBroadbandAccount,
+  deleteBroadbandAccount,
 };
