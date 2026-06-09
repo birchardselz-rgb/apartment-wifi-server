@@ -84,6 +84,7 @@ export interface Staff {
   status: 'active' | 'inactive';
   joinDate: string;
   avatar?: string;
+  password?: string;
 }
 
 // ===== 统计数据 =====

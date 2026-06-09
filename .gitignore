@@ -1,6 +1,8 @@
 node_modules
 .next
-dist
 数据
+storage
+ai-customer-service
 .DS_Store
 *.log
+*.local

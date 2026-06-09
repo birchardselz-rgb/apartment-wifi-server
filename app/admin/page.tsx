@@ -3,14 +3,19 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, TrendingUp, Users, DollarSign, Wifi, Activity, BarChart3, Download, Upload } from 'lucide-react';
-import { ensureInit, getDashboardStats, getClients, getOrders, getPackages } from '@/lib/mock-data';
+import { ArrowLeft, TrendingUp, Users, DollarSign, Wifi, Activity, BarChart3, Download, Upload, LogOut, User } from 'lucide-react';
+import { ensureInit, getDashboardStats, getClients, getOrders, getPackages, getPortalAuth, loginPortal, logoutPortal } from '@/lib/mock-data';
 import { exportAllToExcel, importFromExcel } from '@/lib/excel';
 import type { Client, Order, DashboardStats, BroadbandPackage } from '@/types';
 
 export default function AdminPage() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
+  const [authed, setAuthed] = useState<{ staffId: string; name: string } | null>(null);
+  const [loginUser, setLoginUser] = useState('');
+  const [loginPwd, setLoginPwd] = useState('');
+  const [loginErr, setLoginErr] = useState('');
+
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -20,6 +25,8 @@ export default function AdminPage() {
 
   useEffect(() => {
     ensureInit().then(() => {
+      const auth = getPortalAuth('admin');
+      if (auth) setAuthed(auth);
       setStats(getDashboardStats());
       setClients(getClients());
       setOrders(getOrders());
@@ -27,6 +34,23 @@ export default function AdminPage() {
       setReady(true);
     });
   }, []);
+
+  const handleLogin = () => {
+    const result = loginPortal('admin', loginUser, loginPwd);
+    if (result) {
+      setAuthed(result);
+      setLoginErr('');
+    } else {
+      setLoginErr('登录名或密码错误');
+    }
+  };
+
+  const handleLogout = () => {
+    logoutPortal('admin');
+    setAuthed(null);
+    setLoginUser('');
+    setLoginPwd('');
+  };
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -48,11 +72,42 @@ export default function AdminPage() {
     return <div className="max-w-md mx-auto min-h-screen bg-[#0B0F19] flex items-center justify-center text-gray-500 text-sm">加载中...</div>;
   }
 
+  if (!authed) {
+    return (
+      <div className="max-w-md mx-auto min-h-screen bg-[#0B0F19] flex items-center justify-center p-8">
+        <div className="w-full max-w-sm">
+          <div className="text-center mb-8">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-tr from-purple-500 to-pink-600 flex items-center justify-center shadow-lg shadow-purple-500/20 mb-4">
+              <BarChart3 className="w-7 h-7 text-white" />
+            </div>
+            <h1 className="text-xl font-bold text-white">后台数据端登录</h1>
+            <p className="text-gray-500 text-sm mt-1">DVS网络运营管理平台</p>
+          </div>
+          <div className="bg-[#131B2E] border border-gray-800 rounded-2xl p-5 space-y-4">
+            <input value={loginUser} onChange={e => setLoginUser(e.target.value)}
+              placeholder="登录名（姓名或手机号）"
+              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm focus:border-purple-500 outline-none"
+              onKeyDown={e => e.key === 'Enter' && handleLogin()} />
+            <input value={loginPwd} onChange={e => setLoginPwd(e.target.value)}
+              type="password" placeholder="密码"
+              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm focus:border-purple-500 outline-none"
+              onKeyDown={e => e.key === 'Enter' && handleLogin()} />
+            {loginErr && <div className="text-red-400 text-xs text-center">{loginErr}</div>}
+            <button onClick={handleLogin} className="w-full bg-purple-500 text-white py-3 rounded-xl text-sm font-bold hover:bg-purple-600 transition-colors">登 录</button>
+            <div className="text-[10px] text-gray-600 text-center">运营人员使用系统管理员分配的账号登录</div>
+          </div>
+          <button onClick={() => router.push('/')} className="mt-4 text-gray-500 text-sm flex items-center justify-center space-x-1 w-full"><ArrowLeft className="w-4 h-4" /><span>返回主页</span></button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-md mx-auto min-h-screen bg-[#0B0F19] pb-20">
       <header className="sticky top-0 z-40 bg-[#0F1524]/80 backdrop-blur-md border-b border-gray-800 px-4 py-3 flex items-center">
         <button onClick={() => router.push('/')} className="text-gray-400 mr-3"><ArrowLeft className="w-5 h-5" /></button>
-        <div><h1 className="font-bold text-white text-base">后台数据端</h1><p className="text-[10px] text-gray-500">营收看板 · 数据统计</p></div>
+        <div className="flex-1"><h1 className="font-bold text-white text-base">后台数据端</h1><p className="text-[10px] text-gray-500"><User className="w-3 h-3 inline mr-0.5" />{authed.name}</p></div>
+        <button onClick={handleLogout} className="text-gray-500 hover:text-red-400 p-2"><LogOut className="w-5 h-5" /></button>
       </header>
 
       <div className="p-4 space-y-4">

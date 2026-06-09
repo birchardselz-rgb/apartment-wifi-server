@@ -6,7 +6,8 @@ import type {
 // ============================================================
 // 数据存储模式：API 优先（本地服务器），fallback 到 localStorage
 // ============================================================
-const API_BASE = 'http://localhost:3456';
+// 使用相对路径，适配 localhost 和 tailscale 等自定义域名访问
+const API_BASE = '';
 const STORAGE_KEY = 'apartment_wifi_data';
 
 interface StoreData {
@@ -15,6 +16,7 @@ interface StoreData {
   leads: SalesLead[];
   tickets: Ticket[];
   staff: Staff[];
+  packages: BroadbandPackage[];
   counters: { client: number; order: number; lead: number; ticket: number };
 }
 
@@ -23,14 +25,15 @@ let _cache: StoreData | null = null;
 let _useApi = false;
 
 // ============================================================
-// 套餐（固定不可变）
+// 套餐（持久化，可从 store 读写）
 // ============================================================
 export const PACKAGES: BroadbandPackage[] = [
-  { id: 'pkg-half-500', name: '半年 500M 极速版', speed: '500M', durationMonths: 6, price: 499, installationFee: 200, totalPrice: 699, features: ['500M 光纤接入', '公网 IP', '千兆光猫', '7×12 售后'], isPopular: false, color: 'from-blue-950/40 to-cyan-950/40' },
-  { id: 'pkg-year-500', name: '一年 500M 超值版', speed: '500M', durationMonths: 12, price: 990, installationFee: 200, totalPrice: 1190, features: ['500M 光纤接入', '公网 IP', '千兆光猫', '7×24 售后', '送 WiFi 6 路由器'], isPopular: true, color: 'from-purple-950/40 to-indigo-950/40' },
+  { id: 'pkg-half-500', name: '半年 500M 极速版', speed: '500M', durationMonths: 6, price: 499, installationFee: 200, totalPrice: 699, features: ['500M 光纤接入', '公网 IP', '7×12 售后'], isPopular: false, color: 'from-blue-950/40 to-cyan-950/40' },
+  { id: 'pkg-year-500', name: '一年 500M 超值版', speed: '500M', durationMonths: 12, price: 990, installationFee: 200, totalPrice: 1190, features: ['500M 光纤接入', '公网 IP', '7×24 售后'], isPopular: true, color: 'from-purple-950/40 to-indigo-950/40' },
+  { id: 'pkg-year-1290', name: '一年1000M极速超值包年版', speed: '1000M', durationMonths: 12, price: 1290, installationFee: 200, totalPrice: 1490, features: ['1000M 光纤接入', '公网 IP', '7×24 售后'], isPopular: true, color: 'from-rose-950/40 to-pink-950/40' },
 ];
-export function getPackages(): BroadbandPackage[] { return [...PACKAGES]; }
-export function getPackageById(id: string): BroadbandPackage | undefined { return PACKAGES.find(p => p.id === id); }
+export function getPackages(): BroadbandPackage[] { return [...getStore().packages]; }
+export function getPackageById(id: string): BroadbandPackage | undefined { return getStore().packages.find(p => p.id === id); }
 
 // ============================================================
 // 初始化：探测 API，决定用 API 还是 localStorage
@@ -57,7 +60,7 @@ async function initStore(): Promise<void> {
       }
       return;
     }
-  } catch {}
+  } catch (e) { console.error('API save failed:', e); }
   // API 不可用 → 用 localStorage
   _useApi = false;
   _cache = loadFromLocalStorage();
@@ -102,12 +105,17 @@ function getDefaultStore(): StoreData {
       { id: 'TK005', clientId: 'C004', clientName: '王同学', phone: '13600136004', address: '天河星界公寓 B栋 510', issueType: 'other', description: '需要迁移宽带到同栋 608 房', priority: 'medium', status: 'closed', assignedTo: 'M002', createdAt: '2026-05-15', resolvedAt: '2026-05-17', resolution: '已完成移机' },
     ],
     staff: [
-      { id: 'S001', name: '李明', phone: '18800010001', role: 'sales', status: 'active', joinDate: '2025-06-01' },
-      { id: 'S002', name: '王芳', phone: '18800010002', role: 'sales', status: 'active', joinDate: '2025-08-15' },
-      { id: 'M001', name: '陈师傅', phone: '18800020001', role: 'maintenance', status: 'active', joinDate: '2025-06-01' },
-      { id: 'M002', name: '张师傅', phone: '18800020002', role: 'maintenance', status: 'active', joinDate: '2025-07-01' },
-      { id: 'A001', name: '赵经理', phone: '18800030001', role: 'admin', status: 'active', joinDate: '2025-01-01' },
+      { id: 'S001', name: '李明', phone: '18800010001', role: 'sales', status: 'active', joinDate: '2025-06-01', password: '123456' },
+      { id: 'S002', name: '王芳', phone: '18800010002', role: 'sales', status: 'active', joinDate: '2025-08-15', password: '123456' },
+      { id: 'M001', name: '陈师傅', phone: '18800020001', role: 'maintenance', status: 'active', joinDate: '2025-06-01', password: '123456' },
+      { id: 'M002', name: '张师傅', phone: '18800020002', role: 'maintenance', status: 'active', joinDate: '2025-07-01', password: '123456' },
+      { id: 'A001', name: '赵经理', phone: '18800030001', role: 'admin', status: 'active', joinDate: '2025-01-01', password: '123456' },
       { id: 'SU001', name: '系统管理员', phone: '18800000001', role: 'super_admin', status: 'active', joinDate: '2025-01-01' },
+    ],
+    packages: [
+      { id: 'pkg-half-500', name: '半年 500M 极速版', speed: '500M', durationMonths: 6, price: 499, installationFee: 200, totalPrice: 699, features: ['500M 光纤接入', '公网 IP', '7×12 售后'], isPopular: false, color: 'from-blue-950/40 to-cyan-950/40' },
+      { id: 'pkg-year-500', name: '一年 500M 超值版', speed: '500M', durationMonths: 12, price: 990, installationFee: 200, totalPrice: 1190, features: ['500M 光纤接入', '公网 IP', '7×24 售后'], isPopular: true, color: 'from-purple-950/40 to-indigo-950/40' },
+      { id: 'pkg-year-1290', name: '一年1000M极速超值包年版', speed: '1000M', durationMonths: 12, price: 1290, installationFee: 200, totalPrice: 1490, features: ['1000M 光纤接入', '公网 IP', '7×24 售后'], isPopular: true, color: 'from-rose-950/40 to-pink-950/40' },
     ],
     counters: { client: 5, order: 5, lead: 5, ticket: 5 },
   };
@@ -132,6 +140,7 @@ async function persistStore(): Promise<void> {
           leads: _cache.leads,
           tickets: _cache.tickets,
           staff: _cache.staff,
+          packages: _cache.packages,
         }),
         signal: AbortSignal.timeout(3000),
       });
@@ -236,7 +245,8 @@ export function getDashboardStats(): DashboardStats {
   const totalRevenue = s.orders.filter(o => o.status !== 'cancelled').reduce((sum, o) => sum + o.totalAmount, 0);
   const thisMonth = s.orders.filter(o => o.status !== 'cancelled' && o.createdAt >= '2026-05-01' && o.createdAt <= '2026-05-31');
   const monthlyRevenue = thisMonth.reduce((sum, o) => sum + o.totalAmount, 0);
-  const pkgDist = PACKAGES.map(p => ({ name: p.name, count: s.clients.filter(c => c.packageId === p.id).length }));
+  const allPkgs = s.packages.length ? s.packages : PACKAGES;
+  const pkgDist = allPkgs.map(p => ({ name: p.name, count: s.clients.filter(c => c.packageId === p.id).length }));
   return {
     totalClients: s.clients.length, activeClients: active.length, monthlyRevenue, totalRevenue,
     pendingTickets: s.tickets.filter(t => t.status === 'pending' || t.status === 'assigned' || t.status === 'in_progress').length,
@@ -255,6 +265,104 @@ export function genId(type: 'client' | 'order' | 'lead' | 'ticket'): string {
   return `${map[type]}${String(s.counters[type]).padStart(3, '0')}`;
 }
 
+// ============================================================
+// 登录认证
+// ============================================================
+const AUTH_KEY_PREFIX = 'apartment_wifi_auth_';
+
+export interface AuthSession {
+  staffId: string;
+  name: string;
+  role: Staff['role'];
+}
+
+export function getPortalAuth(portal: string): AuthSession | null {
+  try {
+    const raw = localStorage.getItem(AUTH_KEY_PREFIX + portal);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+export function loginPortal(portal: string, username: string, password: string): AuthSession | null {
+  if (portal === 'system') {
+    if (username === 'admin' && password === '123456') {
+      const session: AuthSession = { staffId: 'SU001', name: '系统管理员', role: 'super_admin' };
+      localStorage.setItem(AUTH_KEY_PREFIX + portal, JSON.stringify(session));
+      return session;
+    }
+    return null;
+  }
+
+  try {
+    const staff = getStore().staff.filter(s => {
+      if (portal === 'sales') return s.role === 'sales';
+      if (portal === 'maintenance') return s.role === 'maintenance';
+      if (portal === 'admin') return s.role === 'admin' || s.role === 'super_admin';
+      return false;
+    });
+
+    const found = staff.find(s => {
+      if (!s.password) return false;
+      return (s.name === username || s.phone === username) && s.password === password;
+    });
+
+    if (found && found.status === 'active') {
+      const session: AuthSession = { staffId: found.id, name: found.name, role: found.role };
+      localStorage.setItem(AUTH_KEY_PREFIX + portal, JSON.stringify(session));
+      return session;
+    }
+  } catch {}
+  return null;
+}
+
+export function logoutPortal(portal: string): void {
+  localStorage.removeItem(AUTH_KEY_PREFIX + portal);
+}
+
+export async function deleteStaff(id: string, force?: boolean): Promise<{ ok: boolean; message?: string }> {
+  const s = getStore();
+  const idx = s.staff.findIndex(m => m.id === id);
+  if (idx < 0) return { ok: false, message: '员工不存在' };
+  if (idx === 0 && s.staff[idx].role === 'super_admin') return { ok: false, message: '不能删除初始系统管理员' };
+  const member = s.staff[idx];
+  const activeClients = s.clients.filter(c => c.salesPersonId === id).length;
+  const activeTickets = s.tickets.filter(t => t.assignedTo === id && (t.status === 'in_progress' || t.status === 'assigned' || t.status === 'pending')).length;
+  if ((activeClients > 0 || activeTickets > 0) && !force) {
+    return { ok: false, message: `该员工负责 ${activeClients} 个客户、${activeTickets} 个工单，请先 reassign 后再删除` };
+  }
+  // 强制删除：清除该员工负责的客户和工单的关联
+  if (force) {
+    for (const c of s.clients) {
+      if (c.salesPersonId === id) c.salesPersonId = undefined;
+    }
+    for (const t of s.tickets) {
+      if (t.assignedTo === id) t.assignedTo = undefined;
+    }
+  }
+  s.staff.splice(idx, 1);
+  await persistStore();
+  return { ok: true };
+}
+
+export async function setStaffPassword(id: string, password: string): Promise<void> {
+  await updateStaff(id, { password });
+}
+
+// --- 套餐 ---
+export async function addPackage(pkg: BroadbandPackage): Promise<void> {
+  getStore().packages.push(pkg);
+  await persistStore();
+}
+
+export async function deletePackage(id: string): Promise<{ ok: boolean; message?: string }> {
+  const s = getStore();
+  const inUse = s.clients.filter(c => c.packageId === id).length;
+  if (inUse > 0) return { ok: false, message: `有 ${inUse} 个客户正在使用此套餐，无法删除` };
+  s.packages = s.packages.filter(p => p.id !== id);
+  await persistStore();
+  return { ok: true };
+}
+
 // --- 导出/导入（供 excel.ts 使用）---
 export type { StoreData };
 export function getStoreData(): StoreData { return getStore(); }
@@ -265,6 +373,7 @@ export function importStoreData(data: Partial<StoreData>): void {
   if (data.leads) s.leads = data.leads;
   if (data.tickets) s.tickets = data.tickets;
   if (data.staff) s.staff = data.staff;
+  if (data.packages) s.packages = data.packages;
   persistStore();
 }
 

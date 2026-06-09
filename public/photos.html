@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+<title>文件浏览 — DVS网络</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0B0F19; color: #E2E8F0; min-height: 100vh; }
+header { padding: 20px 16px; text-align: center; border-bottom: 1px solid #1E293B; position: sticky; top: 0; background: #0B0F19; z-index: 10; }
+header h1 { font-size: 20px; font-weight: 700; }
+header p { font-size: 13px; color: #64748B; margin-top: 4px; }
+.container { max-width: 600px; margin: 0 auto; padding: 12px; }
+
+/* Empty state */
+.empty { text-align: center; padding: 60px 20px; color: #64748B; }
+.empty .big-icon { font-size: 48px; margin-bottom: 12px; }
+.empty .text { font-size: 14px; }
+.empty .btn { display: inline-block; margin-top: 16px; padding: 10px 24px; border-radius: 10px; background: linear-gradient(135deg, #38BDF8, #2563EB); color: #fff; text-decoration: none; font-size: 14px; }
+
+/* Loading & Error */
+.loading { text-align: center; padding: 40px; color: #64748B; font-size: 14px; }
+.error-msg { padding: 12px; background: #450A0A; border: 1px solid #DC2626; border-radius: 12px; text-align: center; font-size: 13px; color: #FCA5A5; margin: 16px; }
+
+/* Date divider */
+.date-divider { display: flex; align-items: center; gap: 8px; padding: 16px 4px 8px; }
+.date-divider .label { font-size: 14px; font-weight: 600; color: #94A3B8; white-space: nowrap; }
+.date-divider .count { font-size: 12px; color: #475569; }
+.date-divider .line { flex: 1; height: 1px; background: #1E293B; }
+
+/* File grid */
+.file-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.file-item { aspect-ratio: 1; border-radius: 4px; overflow: hidden; cursor: pointer; position: relative; background: #1E293B; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.file-item img { width: 100%; height: 100%; object-fit: cover; position: absolute; transition: transform .2s; }
+.file-item:active img { transform: scale(1.05); }
+.file-item .fi { font-size: 40px; z-index: 1; }
+.file-item .fn { z-index: 1; font-size: 10px; color: #94A3B8; text-align: center; padding: 0 4px; word-break: break-all; max-width: 100%; line-height: 1.3; margin-top: 2px; }
+.file-item .fs { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,.6); font-size: 10px; padding: 2px 4px; text-align: center; z-index: 2; color: #94A3B8; }
+.file-item .delete-btn { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border-radius: 50%; background: rgba(239,68,68,.85); color: #fff; border: none; font-size: 14px; cursor: pointer; display: none; align-items: center; justify-content: center; z-index: 5; }
+.file-item:hover .delete-btn, .file-item .delete-btn.show { display: flex; }
+.file-item .play-badge { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 2; width: 36px; height: 36px; border-radius: 50%; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; font-size: 18px; pointer-events: none; }
+
+/* Fullscreen viewer */
+.viewer { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.95); z-index: 100; justify-content: center; align-items: center; }
+.viewer.active { display: flex; flex-direction: column; }
+.viewer .close { position: absolute; top: 16px; right: 16px; width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,.15); color: #fff; border: none; font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 5; }
+.viewer .nav-btn { position: absolute; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,.1); color: #fff; border: none; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 5; }
+.viewer .prev { left: 16px; }
+.viewer .next { right: 16px; }
+.viewer .info { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.7); padding: 6px 14px; border-radius: 20px; font-size: 12px; color: #94A3B8; white-space: nowrap; z-index: 5; }
+
+.viewer img, .viewer video { max-width: 95vw; max-height: 85vh; object-fit: contain; }
+.viewer video { max-height: 80vh; }
+.viewer .file-display { text-align: center; padding: 40px; }
+.viewer .file-display .big-icon { font-size: 72px; margin-bottom: 16px; }
+.viewer .file-display .name { font-size: 16px; color: #E2E8F0; margin-bottom: 8px; word-break: break-all; }
+.viewer .file-display .size { font-size: 13px; color: #64748B; margin-bottom: 20px; }
+.viewer .file-display .dl-btn { display: inline-block; padding: 10px 24px; border-radius: 10px; background: linear-gradient(135deg, #38BDF8, #2563EB); color: #fff; text-decoration: none; font-size: 14px; }
+
+/* Toolbar */
+.toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.toolbar .info { font-size: 13px; color: #64748B; }
+.toolbar .btn { padding: 6px 14px; border-radius: 8px; border: none; font-size: 12px; cursor: pointer; }
+.toolbar .btn-del { background: #1E293B; color: #94A3B8; }
+.toolbar .btn-del.active { background: #7F1D1D; color: #FCA5A5; }
+
+/* Nav */
+.nav { display: flex; gap: 8px; margin-top: 20px; padding: 0 4px; }
+.nav a { flex: 1; text-align: center; padding: 10px; border-radius: 10px; background: #1E293B; color: #94A3B8; text-decoration: none; font-size: 13px; }
+.nav a:active { background: #334155; }
+
+/* Toast */
+.toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #1E293B; color: #E2E8F0; padding: 10px 20px; border-radius: 10px; font-size: 13px; display: none; z-index: 200; box-shadow: 0 4px 12px rgba(0,0,0,.4); }
+.toast.show { display: block; }
+
+/* Filter tabs */
+.filter-tabs { display: flex; gap: 6px; margin-bottom: 12px; overflow-x: auto; padding-bottom: 4px; }
+.filter-tab { padding: 6px 14px; border-radius: 16px; border: none; font-size: 12px; cursor: pointer; white-space: nowrap; background: #1E293B; color: #64748B; }
+.filter-tab.active { background: #334155; color: #E2E8F0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📂 文件浏览</h1>
+  <p>所有已上传的照片、视频、文档</p>
+</header>
+<div class="container">
+  <div class="toolbar">
+    <span class="info" id="totalInfo">加载中...</span>
+    <button class="btn btn-del" id="toggleDel" onclick="toggleDeleteMode()">管理</button>
+  </div>
+
+  <div class="filter-tabs" id="filterTabs">
+    <button class="filter-tab active" data-filter="all" onclick="setFilter('all')">全部</button>
+    <button class="filter-tab" data-filter="image" onclick="setFilter('image')">🖼️ 照片</button>
+    <button class="filter-tab" data-filter="video" onclick="setFilter('video')">🎬 视频</button>
+    <button class="filter-tab" data-filter="audio" onclick="setFilter('audio')">🎵 音频</button>
+    <button class="filter-tab" data-filter="doc" onclick="setFilter('doc')">📄 文档</button>
+    <button class="filter-tab" data-filter="other" onclick="setFilter('other')">📎 其他</button>
+  </div>
+
+  <div id="content"></div>
+
+  <div class="nav">
+    <a href="/">返回首页</a>
+    <a href="/upload.html">上传文件</a>
+  </div>
+</div>
+
+<!-- Fullscreen viewer -->
+<div class="viewer" id="viewer">
+  <button class="close" onclick="closeViewer()">×</button>
+  <button class="nav-btn prev" onclick="prevItem()">‹</button>
+  <div id="viewerContent" style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;"></div>
+  <button class="nav-btn next" onclick="nextItem()">›</button>
+  <div class="info" id="viewerInfo"></div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+const FILE_ICONS = {
+  image: '🖼️', video: '🎬', audio: '🎵', pdf: '📄',
+  word: '📝', excel: '📊', ppt: '📽️', zip: '📦',
+  code: '💻', text: '📃', other: '📎',
+};
+
+function getFileCat(name) {
+  const e = name.split('.').pop().toLowerCase();
+  if (['jpg','jpeg','png','gif','webp','heic','heif','bmp','svg','ico'].includes(e)) return 'image';
+  if (['mp4','mov','avi','mkv','wmv','flv','webm','m4v','3gp'].includes(e)) return 'video';
+  if (['mp3','wav','aac','flac','wma','m4a','ogg'].includes(e)) return 'audio';
+  if (['pdf','doc','docx','xls','xlsx','ppt','pptx','txt','csv','md'].includes(e)) return 'doc';
+  return 'other';
+}
+
+let allFiles = [];
+let filteredFiles = [];
+let currentFilter = 'all';
+let deleteMode = false;
+let currentIndex = -1;
+
+async function loadFiles() {
+  const el = document.getElementById('content');
+  el.innerHTML = '<div class="loading">加载中...</div>';
+  try {
+    const r = await fetch('/api/photos');
+    const data = await r.json();
+    if (!data.success) throw new Error(data.error);
+    renderFiles(data.albums);
+  } catch (e) {
+    el.innerHTML = `<div class="error-msg">加载失败：${e.message}</div>`;
+  }
+}
+
+function renderFiles(albums) {
+  const el = document.getElementById('content');
+  el.innerHTML = '';
+  allFiles = [];
+
+  if (!albums || albums.length === 0) {
+    el.innerHTML = `<div class="empty"><div class="big-icon">📁</div><div class="text">还没有文件，快去上传吧</div><a href="/upload.html" class="btn">上传文件</a></div>`;
+    document.getElementById('totalInfo').textContent = '0 个文件';
+    return;
+  }
+
+  let total = 0;
+  for (const album of albums) {
+    for (const f of album.photos) {
+      f._cat = getFileCat(f.name);
+      f._date = album.date;
+      allFiles.push(f);
+      total++;
+    }
+  }
+
+  applyFilter();
+}
+
+function applyFilter() {
+  const el = document.getElementById('content');
+  el.innerHTML = '';
+  document.getElementById('totalInfo').textContent = `共 ${allFiles.length} 个文件`;
+
+  if (currentFilter === 'all') {
+    filteredFiles = [...allFiles];
+  } else {
+    filteredFiles = allFiles.filter(f => f._cat === currentFilter);
+  }
+
+  // Group by date
+  const groups = {};
+  for (const f of filteredFiles) {
+    if (!groups[f._date]) groups[f._date] = [];
+    groups[f._date].push(f);
+  }
+
+  const sortedDates = Object.keys(groups).sort().reverse();
+  if (sortedDates.length === 0) {
+    el.innerHTML = `<div class="empty"><div class="big-icon">🔍</div><div class="text">该分类下暂无文件</div></div>`;
+    return;
+  }
+
+  for (const date of sortedDates) {
+    const files = groups[date];
+    files.sort((a, b) => new Date(b.time) - new Date(a.time));
+
+    const div = document.createElement('div');
+    div.className = 'date-divider';
+    div.innerHTML = `<span class="label">${date}</span><span class="count">(${files.length} 个)</span><span class="line"></span>`;
+    el.appendChild(div);
+
+    const grid = document.createElement('div');
+    grid.className = 'file-grid';
+
+    for (const f of files) {
+      const item = document.createElement('div');
+      item.className = 'file-item';
+
+      if (f._cat === 'image') {
+        item.innerHTML = `<img src="${f.thumbUrl || f.url}" alt="${f.name}" loading="lazy">`;
+      } else {
+        item.innerHTML = `<div class="fi">${FILE_ICONS[f._cat] || FILE_ICONS.other}</div><div class="fn">${f.name.length > 18 ? f.name.slice(0, 15)+'...' : f.name}</div>`;
+      }
+
+      if (f._cat === 'video') {
+        const badge = document.createElement('div');
+        badge.className = 'play-badge';
+        badge.textContent = '▶';
+        item.appendChild(badge);
+      }
+
+      const size = document.createElement('div');
+      size.className = 'fs';
+      size.textContent = formatSize(f.size);
+      item.appendChild(size);
+
+      const del = document.createElement('button');
+      del.className = 'delete-btn';
+      del.textContent = '×';
+      del.onclick = (e) => { e.stopPropagation(); deleteFile(f._date, f.name); };
+      item.appendChild(del);
+
+      item.onclick = () => openViewer(f);
+      grid.appendChild(item);
+    }
+    el.appendChild(grid);
+  }
+
+  updateDeleteUI();
+}
+
+function setFilter(cat) {
+  currentFilter = cat;
+  document.querySelectorAll('.filter-tab').forEach(t => t.classList.toggle('active', t.dataset.filter === cat));
+  applyFilter();
+}
+
+function toggleDeleteMode() {
+  deleteMode = !deleteMode;
+  document.getElementById('toggleDel').textContent = deleteMode ? '完成' : '管理';
+  document.getElementById('toggleDel').classList.toggle('active', deleteMode);
+  updateDeleteUI();
+}
+
+function updateDeleteUI() {
+  document.querySelectorAll('.delete-btn').forEach(b => b.classList.toggle('show', deleteMode));
+}
+
+async function deleteFile(date, name) {
+  if (!confirm('确定删除这个文件？')) return;
+  try {
+    const r = await fetch(`/api/photos/${date}/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    const data = await r.json();
+    if (data.success) {
+      showToast('已删除');
+      const idx = allFiles.findIndex(f => f._date === date && f.name === name);
+      if (idx >= 0) allFiles.splice(idx, 1);
+      applyFilter();
+    } else {
+      showToast('删除失败');
+    }
+  } catch (e) {
+    showToast('删除失败');
+  }
+}
+
+// Viewer
+function openViewer(file) {
+  currentIndex = filteredFiles.indexOf(file);
+  const v = document.getElementById('viewer');
+  const vc = document.getElementById('viewerContent');
+  v.classList.add('active');
+
+  const f = filteredFiles[currentIndex];
+  vc.innerHTML = '';
+
+  if (f._cat === 'image') {
+    const img = document.createElement('img');
+    img.src = f.url;
+    vc.appendChild(img);
+  } else if (f._cat === 'video') {
+    const video = document.createElement('video');
+    video.src = f.url;
+    video.controls = true;
+    video.autoplay = true;
+    vc.appendChild(video);
+  } else {
+    vc.innerHTML = `
+      <div class="file-display">
+        <div class="big-icon">${FILE_ICONS[f._cat] || FILE_ICONS.other}</div>
+        <div class="name">${f.name}</div>
+        <div class="size">${formatSize(f.size)}</div>
+        <a href="${f.url}" download class="dl-btn" target="_blank">⬇ 下载文件</a>
+      </div>`;
+  }
+
+  document.getElementById('viewerInfo').textContent = `${currentIndex + 1} / ${filteredFiles.length} · ${f._date}`;
+}
+
+function closeViewer() {
+  const v = document.getElementById('viewer');
+  v.classList.remove('active');
+  document.getElementById('viewerContent').innerHTML = '';
+}
+
+function prevItem() { if (currentIndex > 0) { currentIndex--; openViewer(filteredFiles[currentIndex]); } }
+function nextItem() { if (currentIndex < filteredFiles.length - 1) { currentIndex++; openViewer(filteredFiles[currentIndex]); } }
+
+document.addEventListener('keydown', (e) => {
+  if (!document.getElementById('viewer').classList.contains('active')) return;
+  if (e.key === 'Escape') closeViewer();
+  if (e.key === 'ArrowLeft') prevItem();
+  if (e.key === 'ArrowRight') nextItem();
+});
+
+let tx = 0;
+document.getElementById('viewer').addEventListener('touchstart', (e) => { tx = e.changedTouches[0].screenX; });
+document.getElementById('viewer').addEventListener('touchend', (e) => {
+  const d = e.changedTouches[0].screenX - tx;
+  if (Math.abs(d) > 50) { if (d > 0) prevItem(); else nextItem(); }
+});
+
+function formatSize(b) {
+  if (b < 1024) return b + 'B';
+  if (b < 1048576) return (b/1024).toFixed(1) + 'KB';
+  if (b < 1073741824) return (b/1048576).toFixed(1) + 'MB';
+  return (b/1073741824).toFixed(2) + 'GB';
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+loadFiles();
+</script>
+</body>
+</html>

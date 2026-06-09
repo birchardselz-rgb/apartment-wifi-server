@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>文件上传 — DVS网络</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0B0F19; color: #E2E8F0; min-height: 100vh; }
+header { padding: 20px 16px; text-align: center; border-bottom: 1px solid #1E293B; }
+header h1 { font-size: 20px; font-weight: 700; }
+header p { font-size: 13px; color: #64748B; margin-top: 4px; }
+.container { max-width: 500px; margin: 0 auto; padding: 16px; }
+
+/* Upload area */
+.upload-zone { border: 2px dashed #334155; border-radius: 16px; padding: 40px 20px; text-align: center; cursor: pointer; transition: all .2s; margin-bottom: 16px; background: #0F172A; }
+.upload-zone:hover, .upload-zone.dragover { border-color: #38BDF8; background: rgba(56,189,248,.08); }
+.upload-zone .icon { font-size: 48px; margin-bottom: 12px; }
+.upload-zone .text { font-size: 16px; color: #94A3B8; }
+.upload-zone .sub { font-size: 12px; color: #64748B; margin-top: 8px; }
+.upload-zone input { display: none; }
+
+/* Preview grid */
+.preview-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
+.preview-item { position: relative; border-radius: 8px; overflow: hidden; background: #1E293B; aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.preview-item img { width: 100%; height: 100%; object-fit: cover; position: absolute; }
+.preview-item .file-icon { font-size: 32px; z-index: 1; }
+.preview-item .file-name { z-index: 1; font-size: 10px; color: #94A3B8; text-align: center; padding: 2px 4px; word-break: break-all; max-width: 100%; line-height: 1.2; margin-top: 4px; }
+.preview-item .size { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,.6); font-size: 10px; padding: 2px 4px; text-align: center; z-index: 2; }
+.preview-item .remove { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%; background: rgba(239,68,68,.85); color: #fff; border: none; font-size: 14px; line-height: 22px; text-align: center; cursor: pointer; z-index: 3; }
+.preview-item .video-badge { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 2; width: 36px; height: 36px; border-radius: 50%; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; font-size: 18px; pointer-events: none; }
+
+/* Upload button */
+.btn-upload { width: 100%; padding: 14px; border-radius: 12px; border: none; font-size: 16px; font-weight: 600; cursor: pointer; transition: all .2s; }
+.btn-primary { background: linear-gradient(135deg, #38BDF8, #2563EB); color: #fff; }
+.btn-primary:disabled { opacity: .4; cursor: not-allowed; }
+.btn-primary:not(:disabled):active { transform: scale(.97); }
+
+/* Progress */
+.progress-wrap { margin: 16px 0; display: none; }
+.progress-bar { height: 6px; background: #1E293B; border-radius: 3px; overflow: hidden; }
+.progress-fill { height: 100%; width: 0; background: linear-gradient(90deg, #38BDF8, #2563EB); border-radius: 3px; transition: width .3s; }
+.progress-text { font-size: 12px; color: #64748B; margin-top: 6px; text-align: center; }
+
+/* Result */
+.result { display: none; padding: 16px; background: #064E3B; border: 1px solid #059669; border-radius: 12px; margin: 16px 0; text-align: center; }
+.result .check { font-size: 36px; }
+.result .msg { font-size: 14px; margin-top: 6px; color: #6EE7B7; }
+.result .links { margin-top: 10px; }
+.result .links a { color: #38BDF8; text-decoration: none; font-size: 13px; margin: 0 8px; }
+
+/* Error */
+.error { display: none; padding: 12px; background: #450A0A; border: 1px solid #DC2626; border-radius: 12px; margin: 16px 0; text-align: center; font-size: 13px; color: #FCA5A5; }
+
+/* Nav */
+.nav { display: flex; gap: 8px; margin-top: 16px; }
+.nav a { flex: 1; text-align: center; padding: 10px; border-radius: 10px; background: #1E293B; color: #94A3B8; text-decoration: none; font-size: 13px; }
+.nav a:active { background: #334155; }
+
+/* File type badge */
+.type-badge { position: absolute; top: 4px; left: 4px; z-index: 2; font-size: 9px; padding: 1px 5px; border-radius: 4px; background: rgba(0,0,0,.55); color: #94A3B8; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📁 文件上传</h1>
+  <p>照片 / 视频 / 文档 / 任意文件，单文件最大 1GB</p>
+</header>
+<div class="container">
+  <div class="upload-zone" id="dropZone">
+    <div class="icon">📤</div>
+    <div class="text">点击选择文件</div>
+    <div class="sub">或拖拽到此处，支持多选</div>
+    <input type="file" id="fileInput" multiple>
+  </div>
+
+  <div class="preview-grid" id="previewGrid"></div>
+
+  <button class="btn-upload btn-primary" id="btnUpload" disabled onclick="startUpload()">
+    ↑ 上传文件
+  </button>
+
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-text" id="progressText">准备中...</div>
+  </div>
+
+  <div class="error" id="errorBox"></div>
+
+  <div class="result" id="resultBox">
+    <div class="check">✅</div>
+    <div class="msg" id="resultMsg">上传成功！</div>
+    <div class="links">
+      <a href="/photos.html">浏览文件</a>
+      <a href="/upload.html">继续上传</a>
+    </div>
+  </div>
+
+  <div class="nav">
+    <a href="/">返回首页</a>
+    <a href="/photos.html">浏览文件</a>
+  </div>
+</div>
+
+<script>
+const FILE_ICONS = {
+  image:  '🖼️',
+  video:  '🎬',
+  audio:  '🎵',
+  pdf:    '📄',
+  word:   '📝',
+  excel:  '📊',
+  ppt:    '📽️',
+  zip:    '📦',
+  code:   '💻',
+  text:   '📃',
+  other:  '📎',
+};
+
+function getFileType(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  if (['jpg','jpeg','png','gif','webp','heic','heif','bmp','svg','ico'].includes(ext)) return 'image';
+  if (['mp4','mov','avi','mkv','wmv','flv','webm','m4v','3gp'].includes(ext)) return 'video';
+  if (['mp3','wav','aac','flac','wma','m4a','ogg'].includes(ext)) return 'audio';
+  if (['pdf'].includes(ext)) return 'pdf';
+  if (['doc','docx'].includes(ext)) return 'word';
+  if (['xls','xlsx','csv'].includes(ext)) return 'excel';
+  if (['ppt','pptx'].includes(ext)) return 'ppt';
+  if (['zip','rar','7z','tar','gz','bz2'].includes(ext)) return 'zip';
+  if (['js','ts','py','java','go','html','css','json','xml','sh','bat','ps1'].includes(ext)) return 'code';
+  if (['txt','md','log'].includes(ext)) return 'text';
+  return 'other';
+}
+
+let selectedFiles = [];
+
+document.getElementById('dropZone').onclick = () => document.getElementById('fileInput').click();
+document.getElementById('fileInput').onchange = (e) => addFiles(e.target.files);
+
+document.getElementById('dropZone').ondragover = (e) => { e.preventDefault(); e.currentTarget.classList.add('dragover'); };
+document.getElementById('dropZone').ondragleave = (e) => { e.currentTarget.classList.remove('dragover'); };
+document.getElementById('dropZone').ondrop = (e) => { e.preventDefault(); e.currentTarget.classList.remove('dragover'); addFiles(e.dataTransfer.files); };
+
+function addFiles(files) {
+  for (const f of files) {
+    if (f.size > 1024 * 1024 * 1024) { alert(`文件过大 (超过 1GB): ${f.name}`); continue; }
+    selectedFiles.push(f);
+  }
+  renderPreview();
+  document.getElementById('btnUpload').disabled = selectedFiles.length === 0;
+}
+
+function removeFile(i) {
+  selectedFiles.splice(i, 1);
+  renderPreview();
+  document.getElementById('btnUpload').disabled = selectedFiles.length === 0;
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + 'B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + 'KB';
+  if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + 'MB';
+  return (bytes / 1073741824).toFixed(2) + 'GB';
+}
+
+function renderPreview() {
+  const g = document.getElementById('previewGrid');
+  g.innerHTML = '';
+  for (let i = 0; i < selectedFiles.length; i++) {
+    const f = selectedFiles[i];
+    const ft = getFileType(f.name);
+    const div = document.createElement('div');
+    div.className = 'preview-item';
+
+    if (ft === 'image') {
+      const img = document.createElement('img');
+      img.src = URL.createObjectURL(f);
+      div.appendChild(img);
+    } else {
+      const icon = document.createElement('div');
+      icon.className = 'file-icon';
+      icon.textContent = FILE_ICONS[ft] || FILE_ICONS.other;
+      div.appendChild(icon);
+      const name = document.createElement('div');
+      name.className = 'file-name';
+      name.textContent = f.name.length > 20 ? f.name.slice(0, 17) + '...' : f.name;
+      div.appendChild(name);
+    }
+
+    if (ft === 'video') {
+      const badge = document.createElement('div');
+      badge.className = 'video-badge';
+      badge.textContent = '▶';
+      div.appendChild(badge);
+    }
+
+    const badge = document.createElement('div');
+    badge.className = 'type-badge';
+    badge.textContent = f.name.split('.').pop().toUpperCase();
+    div.appendChild(badge);
+
+    const size = document.createElement('div');
+    size.className = 'size';
+    size.textContent = formatSize(f.size);
+    div.appendChild(size);
+
+    const rm = document.createElement('button');
+    rm.className = 'remove';
+    rm.textContent = '×';
+    rm.onclick = () => removeFile(i);
+    div.appendChild(rm);
+
+    g.appendChild(div);
+  }
+  const count = selectedFiles.length;
+  document.getElementById('btnUpload').textContent = `↑ 上传 ${count} 个文件 (${formatSize(selectedFiles.reduce((s,f)=>s+f.size,0))})`;
+}
+
+function showError(msg) {
+  const el = document.getElementById('errorBox');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 6000);
+}
+
+async function startUpload() {
+  if (selectedFiles.length === 0) return;
+  const btn = document.getElementById('btnUpload');
+  const pw = document.getElementById('progressWrap');
+  const pf = document.getElementById('progressFill');
+  const pt = document.getElementById('progressText');
+
+  btn.disabled = true;
+  btn.textContent = '上传中...';
+  pw.style.display = 'block';
+  document.getElementById('resultBox').style.display = 'none';
+  document.getElementById('errorBox').style.display = 'none';
+
+  const form = new FormData();
+  for (const f of selectedFiles) form.append('photos', f);
+
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/photos/upload', true);
+
+  xhr.upload.onprogress = (e) => {
+    if (e.lengthComputable) {
+      const pct = Math.round(e.loaded / e.total * 100);
+      pf.style.width = pct + '%';
+      pt.textContent = `上传中 ${pct}% (${formatSize(e.loaded)} / ${formatSize(e.total)})`;
+    }
+  };
+
+  xhr.onload = () => {
+    pw.style.display = 'none';
+    btn.disabled = false;
+    btn.textContent = '↑ 上传文件';
+    if (xhr.status === 200) {
+      const r = JSON.parse(xhr.responseText);
+      if (r.success) {
+        document.getElementById('resultMsg').textContent = `成功上传 ${r.count} 个文件！`;
+        document.getElementById('resultBox').style.display = 'block';
+        selectedFiles = [];
+        renderPreview();
+        document.getElementById('btnUpload').disabled = true;
+      } else {
+        showError(r.error || '上传失败');
+      }
+    } else {
+      showError('上传失败 (HTTP ' + xhr.status + ')');
+    }
+  };
+
+  xhr.onerror = () => {
+    pw.style.display = 'none';
+    btn.disabled = false;
+    btn.textContent = '↑ 上传文件';
+    showError('网络错误，请检查连接后重试');
+  };
+
+  xhr.send(form);
+}
+</script>
+</body>
+</html>

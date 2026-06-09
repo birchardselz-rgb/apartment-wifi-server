@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Wrench, Phone, MapPin, AlertTriangle, CheckCircle, Clock, User, Plus, Search } from 'lucide-react';
-import { getTickets, getStaffByRole, updateTicket, addTicket, genId, ensureInit } from '@/lib/mock-data';
+import { ArrowLeft, Wrench, Phone, MapPin, AlertTriangle, CheckCircle, Clock, User, Plus, Search, LogOut } from 'lucide-react';
+import { getTickets, getStaffByRole, updateTicket, addTicket, genId, ensureInit, getPortalAuth, loginPortal, logoutPortal } from '@/lib/mock-data';
 import type { Ticket } from '@/types';
 
 const TYPE_LABELS: Record<string, string> = { no_connection: '无法上网', slow_speed: '网速慢', equipment_fault: '设备故障', installation: '安装服务', other: '其他' };
@@ -15,18 +15,42 @@ const STATUS_COLORS: Record<string, string> = { pending: 'text-gray-400', assign
 export default function MaintenancePage() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
+  const [authed, setAuthed] = useState<{ staffId: string; name: string } | null>(null);
+  const [loginUser, setLoginUser] = useState('');
+  const [loginPwd, setLoginPwd] = useState('');
+  const [loginErr, setLoginErr] = useState('');
+
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [filter, setFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
-  const [showModal, setShowModal] = useState(false);
+  const [showForm, setShowForm] = useState(false);
   const [newTicket, setNewTicket] = useState({ clientName: '', phone: '', address: '', issueType: 'no_connection' as Ticket['issueType'], description: '' });
 
   useEffect(() => {
     ensureInit().then(() => {
+      const auth = getPortalAuth('maintenance');
+      if (auth) setAuthed(auth);
       setTickets(getTickets());
       setReady(true);
     });
   }, []);
+
+  const handleLogin = () => {
+    const result = loginPortal('maintenance', loginUser, loginPwd);
+    if (result) {
+      setAuthed(result);
+      setLoginErr('');
+    } else {
+      setLoginErr('登录名或密码错误');
+    }
+  };
+
+  const handleLogout = () => {
+    logoutPortal('maintenance');
+    setAuthed(null);
+    setLoginUser('');
+    setLoginPwd('');
+  };
 
   const maintenanceStaff = ready ? getStaffByRole('maintenance') : [];
   const filtered = tickets.filter(t => {
@@ -62,7 +86,7 @@ export default function MaintenancePage() {
     if (!newTicket.clientName || !newTicket.phone || !newTicket.description) return;
     await addTicket({ id: genId('ticket'), clientId: '', ...newTicket, priority: 'medium', status: 'pending', createdAt: new Date().toISOString().slice(0, 10) });
     setTickets(getTickets());
-    setShowModal(false);
+    setShowForm(false);
     setNewTicket({ clientName: '', phone: '', address: '', issueType: 'no_connection', description: '' });
   };
 
@@ -70,13 +94,75 @@ export default function MaintenancePage() {
     return <div className="max-w-md mx-auto min-h-screen bg-[#0B0F19] flex items-center justify-center text-gray-500 text-sm">加载中...</div>;
   }
 
+  if (!authed) {
+    return (
+      <div className="max-w-md mx-auto min-h-screen bg-[#0B0F19] flex items-center justify-center p-8">
+        <div className="w-full max-w-sm">
+          <div className="text-center mb-8">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-600 flex items-center justify-center shadow-lg shadow-amber-500/20 mb-4">
+              <Wrench className="w-7 h-7 text-white" />
+            </div>
+            <h1 className="text-xl font-bold text-white">维护端登录</h1>
+            <p className="text-gray-500 text-sm mt-1">DVS网络维护管理平台</p>
+          </div>
+          <div className="bg-[#131B2E] border border-gray-800 rounded-2xl p-5 space-y-4">
+            <input value={loginUser} onChange={e => setLoginUser(e.target.value)}
+              placeholder="登录名（姓名或手机号）"
+              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm focus:border-amber-500 outline-none"
+              onKeyDown={e => e.key === 'Enter' && handleLogin()} />
+            <input value={loginPwd} onChange={e => setLoginPwd(e.target.value)}
+              type="password" placeholder="密码"
+              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm focus:border-amber-500 outline-none"
+              onKeyDown={e => e.key === 'Enter' && handleLogin()} />
+            {loginErr && <div className="text-red-400 text-xs text-center">{loginErr}</div>}
+            <button onClick={handleLogin} className="w-full bg-amber-500 text-white py-3 rounded-xl text-sm font-bold hover:bg-amber-600 transition-colors">登 录</button>
+            <div className="text-[10px] text-gray-600 text-center">维护人员使用系统管理员分配的账号登录</div>
+          </div>
+          <button onClick={() => router.push('/')} className="mt-4 text-gray-500 text-sm flex items-center justify-center space-x-1 w-full"><ArrowLeft className="w-4 h-4" /><span>返回主页</span></button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-md mx-auto min-h-screen bg-[#0B0F19] pb-20">
       <header className="sticky top-0 z-40 bg-[#0F1524]/80 backdrop-blur-md border-b border-gray-800 px-4 py-3 flex items-center">
-        <button onClick={() => router.push('/')} className="text-gray-400 mr-3"><ArrowLeft className="w-5 h-5" /></button>
-        <div><h1 className="font-bold text-white text-base">维护端</h1><p className="text-[10px] text-gray-500">工单处理 · 故障诊断</p></div>
-        <button onClick={() => setShowModal(true)} className="ml-auto bg-amber-500 text-white p-2 rounded-xl"><Plus className="w-5 h-5" /></button>
+        {showForm ? (
+          <>
+            <button onClick={() => setShowForm(false)} className="text-gray-400 mr-3"><ArrowLeft className="w-5 h-5" /></button>
+            <div className="flex-1"><h1 className="font-bold text-white text-base">新建工单</h1></div>
+            <button onClick={handleAddTicket} className="text-sm font-bold text-white bg-blue-600 px-5 py-2 rounded-lg hover:bg-blue-500 active:scale-95 transition-all shadow-lg shadow-blue-600/30 shrink-0"><Plus className="w-4 h-4 inline mr-1" />确认创建</button>
+          </>
+        ) : (
+          <>
+            <button onClick={() => router.push('/')} className="text-gray-400 mr-3"><ArrowLeft className="w-5 h-5" /></button>
+            <div className="flex-1"><h1 className="font-bold text-white text-base">维护端</h1><p className="text-[10px] text-gray-500"><User className="w-3 h-3 inline mr-0.5" />{authed.name}</p></div>
+            <button onClick={() => setShowForm(true)} className="bg-amber-500 text-white p-2 rounded-xl mr-2"><Plus className="w-5 h-5" /></button>
+            <button onClick={handleLogout} className="text-gray-500 hover:text-red-400 p-2"><LogOut className="w-5 h-5" /></button>
+          </>
+        )}
       </header>
+
+      {showForm && (
+        <div className="p-5 space-y-4">
+          <div className="space-y-3">
+            <input value={newTicket.clientName} onChange={e => setNewTicket(f => ({ ...f, clientName: e.target.value }))} placeholder="客户姓名 *" className="w-full bg-[#131B2E] border border-gray-700 rounded-xl px-4 py-3.5 text-white text-sm focus:border-amber-500 outline-none transition-colors" />
+            <input value={newTicket.phone} onChange={e => setNewTicket(f => ({ ...f, phone: e.target.value }))} placeholder="手机号 *" maxLength={11} className="w-full bg-[#131B2E] border border-gray-700 rounded-xl px-4 py-3.5 text-white text-sm focus:border-amber-500 outline-none transition-colors" />
+            <input value={newTicket.address} onChange={e => setNewTicket(f => ({ ...f, address: e.target.value }))} placeholder="地址" className="w-full bg-[#131B2E] border border-gray-700 rounded-xl px-4 py-3.5 text-white text-sm focus:border-amber-500 outline-none transition-colors" />
+            <select value={newTicket.issueType} onChange={e => setNewTicket(f => ({ ...f, issueType: e.target.value as Ticket['issueType'] }))} className="w-full bg-[#131B2E] border border-gray-700 rounded-xl px-4 py-3.5 text-white text-sm focus:border-amber-500 outline-none">
+              <option value="no_connection">无法上网</option>
+              <option value="slow_speed">网速慢</option>
+              <option value="equipment_fault">设备故障</option>
+              <option value="installation">安装服务</option>
+              <option value="other">其他</option>
+            </select>
+            <textarea value={newTicket.description} onChange={e => setNewTicket(f => ({ ...f, description: e.target.value }))} placeholder="故障描述 *" rows={4} className="w-full bg-[#131B2E] border border-gray-700 rounded-xl px-4 py-3.5 text-white text-sm focus:border-amber-500 outline-none resize-none transition-colors" />
+          </div>
+          <button onClick={handleAddTicket} disabled={!newTicket.clientName || !newTicket.phone || !newTicket.description} className="w-full bg-gradient-to-r from-blue-600 to-amber-500 text-white py-3.5 rounded-xl text-base font-bold shadow-lg shadow-blue-600/25 disabled:opacity-40">确认创建</button>
+        </div>
+      )}
+
+      {!showForm && (<div>
 
       {/* Stats */}
       <div className="flex space-x-2 p-4 pb-2">
@@ -124,35 +210,7 @@ export default function MaintenancePage() {
           ))}
         </AnimatePresence>
       </div>
-
-      {/* Add Ticket Modal */}
-      <AnimatePresence>
-        {showModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center" onClick={() => setShowModal(false)}>
-            <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 25 }} className="w-full max-w-md bg-[#1A1D2E] rounded-t-2xl p-6" onClick={e => e.stopPropagation()}>
-              <div className="w-10 h-1 bg-gray-700 rounded-full mx-auto mb-6"></div>
-              <h2 className="text-lg font-bold text-white mb-4">新建工单</h2>
-              <div className="space-y-3">
-                <input value={newTicket.clientName} onChange={e => setNewTicket(f => ({ ...f, clientName: e.target.value }))} placeholder="客户姓名 *" className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm focus:border-cyan-500 outline-none" />
-                <input value={newTicket.phone} onChange={e => setNewTicket(f => ({ ...f, phone: e.target.value }))} placeholder="手机号 *" maxLength={11} className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm focus:border-cyan-500 outline-none" />
-                <input value={newTicket.address} onChange={e => setNewTicket(f => ({ ...f, address: e.target.value }))} placeholder="地址" className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm focus:border-cyan-500 outline-none" />
-                <select value={newTicket.issueType} onChange={e => setNewTicket(f => ({ ...f, issueType: e.target.value as Ticket['issueType'] }))} className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm focus:border-cyan-500 outline-none">
-                  <option value="no_connection">无法上网</option>
-                  <option value="slow_speed">网速慢</option>
-                  <option value="equipment_fault">设备故障</option>
-                  <option value="installation">安装服务</option>
-                  <option value="other">其他</option>
-                </select>
-                <textarea value={newTicket.description} onChange={e => setNewTicket(f => ({ ...f, description: e.target.value }))} placeholder="故障描述 *" rows={2} className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm focus:border-cyan-500 outline-none resize-none" />
-              </div>
-              <div className="flex space-x-3 mt-6">
-                <button onClick={() => setShowModal(false)} className="flex-1 py-3 rounded-xl text-gray-400 border border-gray-700 text-sm">取消</button>
-                <button onClick={handleAddTicket} disabled={!newTicket.clientName || !newTicket.phone || !newTicket.description} className="flex-1 bg-amber-500 text-white py-3 rounded-xl text-sm font-bold disabled:opacity-40">创建工单</button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      </div>)}
     </div>
   );
 }
