@@ -131,16 +131,28 @@ app.all('/api/*', async (req, res) => {
   try {
     // === AUTH ===
     if (path === '/api/auth/login' && method === 'POST') {
-      const { username, password } = req.body || {};
-      // 兼容模拟登录
-      if (username === 'admin' && (!password || password === 'admin123')) {
-        return send({ token: 'token-' + Date.now(), userId: 1, username: 'admin', companyName: '公寓宽带运营平台' });
+      const { username, password, loginType, landlordId } = req.body || {};
+      const companies = ['白云公寓管理有限公司', '天河青年社区', '幸福家园公寓', '阳光城公寓', '碧桂园公寓'];
+
+      if (loginType === 'admin') {
+        // 总公司管理员
+        if (username === 'admin' && (!password || password === 'admin123')) {
+          return send({ token: 'token-' + Date.now(), userId: 1, username: 'admin', companyName: '总公司 · 管理员' });
+        }
+        // 也查一下 staff 表
+        const staffList = await db.getAllStaff();
+        const user = staffList.find(s => s.name === username && (!password || s.password === password));
+        if (user) return send({ token: 'token-' + Date.now(), userId: user.id, username: user.name, companyName: '总公司 · ' + user.role });
+        return fail('总公司演示账号: admin / admin123', 401);
+      } else {
+        // 二房东登录
+        const idx = landlordId ? (parseInt(landlordId) - 1) : 0;
+        const company = companies[idx] || companies[0];
+        if (!password || password === 'admin123') {
+          return send({ token: 'token-' + Date.now(), userId: 1000 + (idx + 1), username: username || company, companyName: '二房东 · ' + company });
+        }
+        return fail('二房东演示密码: admin123', 401);
       }
-      // 从数据库验证
-      const staffList = await db.getAllStaff();
-      const user = staffList.find(s => s.name === username || (s.phone === username && (!password || s.password === password)));
-      if (user) return send({ token: 'token-' + Date.now(), userId: user.id, username: user.name, companyName: '公寓宽带运营平台' });
-      return fail('用户名或密码错误', 401);
     }
 
     // === DASHBOARD ===
