@@ -370,6 +370,123 @@ app.all('/api/*', async (req, res) => {
     if (path === '/api/package/save' && method === 'POST') return send({ id: 999 });
     if (path.match(/^\/api\/package\/\d+$/) && method === 'DELETE') return send('删除成功');
 
+    // === DATA EXPORT ===
+    const exportMatch = path.match(/^\/api\/export\/(\w+)$/);
+    if (exportMatch && method === 'GET') {
+      const type = exportMatch[1];
+      const data = await db.readAllData();
+      const XLSX = require('xlsx');
+      let rows, headers, sheetName;
+
+      // Filter data by role (landlord only sees their own)
+      let filteredData = data;
+      if (!isAdmin && landlordId) {
+        const myCompany = user.username || '';
+        filteredData = {
+          ...data,
+          clients: data.clients.filter(c => c.address.includes(myCompany) || c.salesPersonId === String(landlordId)),
+        };
+      }
+
+      switch (type) {
+        case 'broadband': {
+          rows = filteredData.clients.map(c => ({
+            '宽带账号': 'BB' + String(c.id || '').padStart(6, '0'),
+            '客户姓名': c.name || '',
+            '联系电话': c.phone || '',
+            '所属公寓': c.address?.split(' ')[0] || '',
+            '房号': c.roomNo || '',
+            '套餐': c.packageId || '',
+            '在线状态': c.status === 'active' ? '在线' : '离线',
+            '服务状态': c.status === 'active' ? '正常' : c.status === 'suspended' ? '暂停' : '已过期',
+            '到期时间': c.expiryDate || '永久',
+            '安装日期': c.installDate || '',
+          }));
+          headers = ['宽带账号', '客户姓名', '联系电话', '所属公寓', '房号', '套餐', '在线状态', '服务状态', '到期时间', '安装日期'];
+          sheetName = '宽带用户';
+          break;
+        }
+        case 'customers': {
+          rows = filteredData.clients.map(c => ({
+            '编号': c.id || '',
+            '姓名': c.name || '',
+            '电话': c.phone || '',
+            '公寓': c.address?.split(' ')[0] || '',
+            '房号': c.roomNo || '',
+            '套餐': c.packageId || '',
+            '状态': c.status === 'active' ? '正常' : c.status === 'suspended' ? '暂停' : '已过期',
+            '安装日期': c.installDate || '',
+            '到期日期': c.expiryDate || '',
+            '创建时间': c.createdAt || '',
+          }));
+          headers = ['编号', '姓名', '电话', '公寓', '房号', '套餐', '状态', '安装日期', '到期日期', '创建时间'];
+          sheetName = '客户信息';
+          break;
+        }
+        case 'orders': {
+          rows = filteredData.orders.map(o => ({
+            '订单号': o.id || '',
+            '客户': o.clientName || '',
+            '电话': o.phone || '',
+            '套餐': o.packageName || o.packageId || '',
+            '金额': o.amount || 0,
+            '安装费': o.installationFee || 0,
+            '总金额': o.totalAmount || 0,
+            '状态': o.status || '',
+            '创建时间': o.createdAt || '',
+            '付款时间': o.paidAt || '',
+          }));
+          headers = ['订单号', '客户', '电话', '套餐', '金额', '安装费', '总金额', '状态', '创建时间', '付款时间'];
+          sheetName = '订单记录';
+          break;
+        }
+        case 'tickets': {
+          rows = filteredData.tickets.map(t => ({
+            '工单号': t.id || '',
+            '客户': t.clientName || '',
+            '电话': t.phone || '',
+            '问题类型': t.issueType || t.description?.substring(0, 20) || '',
+            '问题描述': t.description || '',
+            '优先级': t.priority || '普通',
+            '状态': t.status || '',
+            '处理人': t.assignedTo || '',
+            '处理备注': t.handle_note || t.resolution || '',
+            '创建时间': t.createdAt || '',
+          }));
+          headers = ['工单号', '客户', '电话', '问题类型', '问题描述', '优先级', '状态', '处理人', '处理备注', '创建时间'];
+          sheetName = '工单记录';
+          break;
+        }
+        case 'finance': {
+          rows = filteredData.orders.map(o => ({
+            '单号': o.id || '',
+            '客户': o.clientName || '',
+            '电话': o.phone || '',
+            '套餐': o.packageName || '',
+            '金额': o.amount || 0,
+            '安装费': o.installationFee || 0,
+            '合计': o.totalAmount || 0,
+            '状态': o.status || '',
+            '付款时间': o.paidAt || '',
+          }));
+          headers = ['单号', '客户', '电话', '套餐', '金额', '安装费', '合计', '状态', '付款时间'];
+          sheetName = '财务记录';
+          break;
+        }
+        default: return fail('不支持的导出类型', 400);
+      }
+
+      const ws = XLSX.utils.json_to_sheet(rows, { header: headers });
+      // 设置列宽
+      ws['!cols'] = headers.map(h => ({ wch: Math.max(h.length * 2, 15) }));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename=${type}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      return res.send(buf);
+    }
+
     // 404
     res.status(404).json({ code: 404, message: 'API endpoint not found: ' + path, data: null });
   } catch (err) {
