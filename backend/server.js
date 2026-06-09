@@ -241,6 +241,37 @@ app.all('/api/*', async (req, res) => {
       });
     }
 
+    // === EXPIRING CUSTOMERS ===
+    if (path === '/api/dashboard/expiring') {
+      const data = await db.readAllData();
+      let clients = data.clients;
+      if (!isAdmin && landlordId) {
+        clients = clients.filter(c => parseInt(c.landlordId) === parseInt(landlordId));
+      }
+      const now = new Date();
+      const expiringSoon = clients.filter(c => {
+        if (!c.expiryDate || c.expiryDate === '永久') return false;
+        const expiry = new Date(c.expiryDate);
+        const diffDays = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+        return diffDays > 0 && diffDays <= 30;
+      }).sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate)).slice(0, 10);
+      const overdue = clients.filter(c => {
+        if (!c.expiryDate || c.expiryDate === '永久') return false;
+        const expiry = new Date(c.expiryDate);
+        const diffDays = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+        return diffDays <= 0;
+      }).length;
+      return send({
+        expiringSoon: expiringSoon.map(c => ({
+          id: c.id, name: c.name, phone: c.phone, roomNo: c.roomNo,
+          address: c.address, packageId: c.packageId,
+          expiryDate: c.expiryDate, daysLeft: Math.ceil((new Date(c.expiryDate) - now) / (1000 * 60 * 60 * 24)),
+        })),
+        overdue,
+        expiringCount: expiringSoon.length,
+      });
+    }
+
     // === BUILDING ===
     if (path === '/api/building/list') {
       const allBuildings = await db.getAllBuildings();
