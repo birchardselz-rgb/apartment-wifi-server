@@ -481,6 +481,116 @@ app.all('/api/*', async (req, res) => {
         paidAt: '2026-06-' + String((i % 20) + 1).padStart(2, '0') + 'T08:30:00',
       })));
     }
+    if (path === '/api/finance/settlement') {
+      const data = await db.readAllData();
+      const landlords = await db.getAllLandlords();
+      const allLandlords = landlords.length > 0 ? landlords : [
+        { id: 1, name: '白云公寓管理有限公司', share_ratio: 70 },
+        { id: 2, name: '天河青年社区', share_ratio: 65 },
+        { id: 3, name: '幸福家园公寓', share_ratio: 60 },
+      ];
+
+      // Calculate income per landlord
+      const settlementList = allLandlords.map(ll => {
+        const llClients = data.clients.filter(c => parseInt(c.landlordId) === ll.id);
+        const llOrders = data.orders.filter(o => llClients.some(c => c.name === o.clientName));
+        const totalIncome = llOrders.reduce((s, o) => s + (o.amount || 0), 0) || llClients.length * 299;
+        const shareRatio = ll.share_ratio || 70;
+        const platformFee = totalIncome * (1 - shareRatio / 100);
+        const landlordIncome = totalIncome * (shareRatio / 100);
+        return {
+          id: ll.id,
+          name: ll.name,
+          contact: ll.contact || '',
+          phone: ll.phone || '',
+          clientCount: llClients.length,
+          activeCount: llClients.filter(c => c.status === 'active').length,
+          totalIncome: Math.round(totalIncome * 100) / 100,
+          shareRatio: shareRatio,
+          landlordIncome: Math.round(landlordIncome * 100) / 100,
+          platformFee: Math.round(platformFee * 100) / 100,
+          shareRatio: shareRatio,
+        };
+      });
+
+      const grandTotal = settlementList.reduce((s, ll) => s + ll.totalIncome, 0);
+      const grandLandlord = settlementList.reduce((s, ll) => s + ll.landlordIncome, 0);
+      const grandPlatform = settlementList.reduce((s, ll) => s + ll.platformFee, 0);
+
+      return send({
+        landlords: settlementList,
+        summary: {
+          totalIncome: Math.round(grandTotal * 100) / 100,
+          totalLandlordIncome: Math.round(grandLandlord * 100) / 100,
+          totalPlatformFee: Math.round(grandPlatform * 100) / 100,
+          month: new Date().getMonth() + 1 + '月',
+          year: new Date().getFullYear(),
+        }
+      });
+    }
+
+    if (path === '/api/finance/landlord-detail' && method === 'POST') {
+      const { landlordId } = req.body;
+      if (!landlordId) return fail('缺少 landlordId');
+      const data = await db.readAllData();
+      const landlords = await db.getAllLandlords();
+      const ll = landlords.find(l => l.id === parseInt(landlordId)) || { id: parseInt(landlordId), name: '公寓#' + landlordId, share_ratio: 70 };
+
+      const llClients = data.clients.filter(c => parseInt(c.landlordId) === parseInt(landlordId));
+      const llOrders = data.orders.filter(o => llClients.some(c => c.name === o.clientName));
+      const totalIncome = llOrders.reduce((s, o) => s + (o.amount || 0), 0) || llClients.length * 299;
+      const shareRatio = ll.share_ratio || 70;
+
+      // Generate monthly detail
+      const monthlyData = [
+        { month: '1月', income: Math.round(totalIncome * 0.10 * 100) / 100 },
+        { month: '2月', income: Math.round(totalIncome * 0.12 * 100) / 100 },
+        { month: '3月', income: Math.round(totalIncome * 0.15 * 100) / 100 },
+        { month: '4月', income: Math.round(totalIncome * 0.18 * 100) / 100 },
+        { month: '5月', income: Math.round(totalIncome * 0.20 * 100) / 100 },
+        { month: '6月', income: Math.round(totalIncome * 0.25 * 100) / 100 },
+      ];
+
+      // Generate transaction records for this landlord
+      const records = llClients.slice(0, 30).map((c, i) => ({
+        id: i + 1,
+        clientName: c.name || '',
+        phone: c.phone || '',
+        roomNo: c.roomNo || '',
+        amount: 299,
+        shareRatio: shareRatio,
+        landlordShare: Math.round(299 * shareRatio / 100 * 100) / 100,
+        platformFee: Math.round(299 * (100 - shareRatio) / 100 * 100) / 100,
+        date: c.createdAt || c.installDate || '2026-06-01',
+        status: c.status === 'active' ? 'settled' : 'pending',
+      }));
+
+      return send({
+        landlord: { id: ll.id, name: ll.name, contact: ll.contact, phone: ll.phone, shareRatio },
+        clients: llClients,
+        totalIncome: Math.round(totalIncome * 100) / 100,
+        landlordIncome: Math.round(totalIncome * shareRatio / 100 * 100) / 100,
+        platformFee: Math.round(totalIncome * (100 - shareRatio) / 100 * 100) / 100,
+        monthlyData,
+        records,
+      });
+    }
+
+    if (path === '/api/finance/statistics') {
+      if (!isAdmin) return fail('无权限');
+      const data = await db.readAllData();
+      const totalOrders = data.orders.length || data.clients.length;
+      const totalIncome = data.orders.reduce((s, o) => s + (o.amount || 0), 0) || data.clients.length * 299;
+      const activeAccounts = data.clients.filter(c => c.status === 'active').length;
+      const overdueAccounts = data.clients.filter(c => c.status === 'expired').length;
+      return send({
+        totalIncome: Math.round(totalIncome * 100) / 100,
+        totalOrders,
+        activeAccounts,
+        overdueAccounts,
+        totalClients: data.clients.length,
+      });
+    }
 
     // PACKAGE
     if (path === '/api/package/list' || path === '/api/package/all') {
