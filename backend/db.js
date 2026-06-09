@@ -171,11 +171,23 @@ async function initTables() {
       create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS building (
+      id SERIAL PRIMARY KEY,
+      landlord_id INTEGER NOT NULL DEFAULT 0,
+      name TEXT NOT NULL DEFAULT '',
+      address TEXT DEFAULT '',
+      total_rooms INTEGER DEFAULT 0,
+      floors INTEGER DEFAULT 1,
+      status INTEGER DEFAULT 1,
+      create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
-  // 确保扩展字段存在
+  // 确保扩展字段存在（兼容旧表）
   const tables = [
-    { name: 'customer', cols: ['package_id', 'install_date', 'sales_person_id'] },
+    { name: 'customer', cols: ['package_id', 'install_date', 'sales_person_id', 'landlord_id'] },
     { name: 'ticket', cols: ['client_id', 'issue_type', 'priority'] },
     { name: 'package', cols: ['duration_months', 'installation_fee', 'total_price', 'features'] },
   ];
@@ -273,6 +285,7 @@ async function readAllData() {
       expiryDate: c.expire_time || '',
       createdAt: c.create_time || '',
       salesPersonId: c.sales_person_id || '',
+      landlordId: c.landlord_id || 0,
     })),
     orders: orders.map(o => ({
       id: o.order_id || o.id?.toString() || '',
@@ -345,8 +358,8 @@ async function writeAllData(data) {
   if (data.clients) {
     await query('DELETE FROM customer');
     for (const c of data.clients) {
-      await query(`INSERT INTO customer (name, phone, wechat_id, project_name, building_name, room_no, package_name, package_id, status, expire_time, install_date, sales_person_id, create_time)
-        VALUES ($1, $2, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      await query(`INSERT INTO customer (name, phone, wechat_id, project_name, building_name, room_no, package_name, package_id, status, expire_time, install_date, sales_person_id, create_time, landlord_id)
+        VALUES ($1, $2, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
         [
           c.name || '',
           c.phone || '',
@@ -360,6 +373,7 @@ async function writeAllData(data) {
           c.installDate || '',
           c.salesPersonId || '',
           c.createdAt || new Date().toISOString(),
+          c.landlordId || 0,
         ]);
     }
   }
@@ -440,19 +454,71 @@ async function writeAllData(data) {
   }
 }
 
+// ====== Building CRUD ======
+async function getAllBuildings() {
+  await ensureTables();
+  const { rows } = await query('SELECT * FROM building ORDER BY id');
+  return rows;
+}
+
+async function getBuildingsByLandlord(landlordId) {
+  await ensureTables();
+  const { rows } = await query('SELECT * FROM building WHERE landlord_id = $1 ORDER BY id', [landlordId]);
+  return rows;
+}
+
+async function createBuilding(data) {
+  await ensureTables();
+  const { rows } = await query(
+    `INSERT INTO building (landlord_id, name, address, total_rooms, floors, status) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+    [data.landlordId || 0, data.name, data.address || '', data.totalRooms || 0, data.floors || 1, data.status ?? 1]
+  );
+  return rows[0];
+}
+
+async function updateBuilding(id, data) {
+  await ensureTables();
+  const { rows } = await query(
+    `UPDATE building SET landlord_id=$1, name=$2, address=$3, total_rooms=$4, floors=$5, status=$6 WHERE id=$7 RETURNING *`,
+    [data.landlordId || 0, data.name, data.address || '', data.totalRooms || 0, data.floors || 1, data.status ?? 1, id]
+  );
+  return rows[0];
+}
+
+async function deleteBuilding(id) {
+  await ensureTables();
+  await query('DELETE FROM building WHERE id = $1', [id]);
+}
+
 // ====== Seed Data ======
 async function seedIfEmpty() {
   await ensureTables();
   const { rows } = await query('SELECT COUNT(*)::int as c FROM customer');
   if (rows[0].c > 0) return;
 
+  // 先插入默认二房东
+  await query(`INSERT INTO landlord (name, contact, phone, address, status, share_ratio) VALUES
+    ('白云公寓管理有限公司', '陈总', '13800001001', '白云大道1号', 1, 70),
+    ('天河青年社区', '李总', '13800001002', '天河路88号', 1, 65),
+    ('幸福家园公寓', '王先生', '13800001003', '幸福路100号', 1, 60)`);
+
+  // 插入默认楼栋
+  await query(`INSERT INTO building (landlord_id, name, address, total_rooms, floors) VALUES
+    (1, '白云公寓A栋', '白云大道1号', 60, 10),
+    (1, '白云公寓B栋', '白云大道1号', 50, 8),
+    (2, '天河青年社区A栋', '天河路88号', 40, 6),
+    (2, '天河青年社区B栋', '天河路88号', 35, 5),
+    (3, '幸福家园1栋', '幸福路100号', 30, 15)`);
+
   const SEED = {
     clients: [
-      { id: 'C001', name: '陈先生', phone: '13800138001', address: '天河星界公寓 B栋 403', roomNo: 'B-403', packageId: 'pkg-year-500', status: 'active', installDate: '2026-01-15', expiryDate: '2027-01-15', createdAt: '2026-01-10', salesPersonId: 'S001' },
-      { id: 'C002', name: '李女士', phone: '13900139002', address: '天河星界公寓 A栋 205', roomNo: 'A-205', packageId: 'pkg-half-500', status: 'active', installDate: '2026-03-01', expiryDate: '2026-09-01', createdAt: '2026-02-28', salesPersonId: 'S001' },
-      { id: 'C003', name: '张先生', phone: '13700137003', address: '珠江新城公寓 C栋 1201', roomNo: 'C-1201', packageId: 'pkg-year-500', status: 'active', installDate: '2025-12-01', expiryDate: '2026-12-01', createdAt: '2025-11-28', salesPersonId: 'S002' },
-      { id: 'C004', name: '王同学', phone: '13600136004', address: '天河星界公寓 B栋 510', roomNo: 'B-510', packageId: 'pkg-half-500', status: 'expired', installDate: '2025-10-01', expiryDate: '2026-04-01', createdAt: '2025-09-28', salesPersonId: 'S001' },
-      { id: 'C005', name: '赵先生', phone: '13500135005', address: '棠下小区 3栋 202', roomNo: '3-202', packageId: 'pkg-year-500', status: 'pending_install', createdAt: '2026-05-20', salesPersonId: 'S002' },
+      { id: 'C001', name: '陈先生', phone: '13800138001', address: '白云公寓A栋 403', roomNo: '403', packageId: 'pkg-year-500', status: 'active', installDate: '2026-01-15', expiryDate: '2027-01-15', createdAt: '2026-01-10', salesPersonId: 'S001', landlordId: 1 },
+      { id: 'C002', name: '李女士', phone: '13900139002', address: '白云公寓A栋 205', roomNo: '205', packageId: 'pkg-half-500', status: 'active', installDate: '2026-03-01', expiryDate: '2026-09-01', createdAt: '2026-02-28', salesPersonId: 'S001', landlordId: 1 },
+      { id: 'C003', name: '张先生', phone: '13700137003', address: '天河青年社区A栋 1201', roomNo: '1201', packageId: 'pkg-year-500', status: 'active', installDate: '2025-12-01', expiryDate: '2026-12-01', createdAt: '2025-11-28', salesPersonId: 'S002', landlordId: 2 },
+      { id: 'C004', name: '王同学', phone: '13600136004', address: '白云公寓B栋 510', roomNo: '510', packageId: 'pkg-half-500', status: 'expired', installDate: '2025-10-01', expiryDate: '2026-04-01', createdAt: '2025-09-28', salesPersonId: 'S001', landlordId: 1 },
+      { id: 'C005', name: '赵先生', phone: '13500135005', address: '幸福家园1栋 202', roomNo: '202', packageId: 'pkg-year-500', status: 'pending_install', createdAt: '2026-05-20', salesPersonId: 'S002', landlordId: 3 },
+      { id: 'C006', name: '刘小姐', phone: '13400134006', address: '天河青年社区B栋 805', roomNo: '805', packageId: 'pkg-year-1000', status: 'active', installDate: '2026-04-01', expiryDate: '2027-04-01', createdAt: '2026-03-28', salesPersonId: 'S002', landlordId: 2 },
+      { id: 'C007', name: '黄先生', phone: '13300133007', address: '白云公寓A栋 601', roomNo: '601', packageId: 'pkg-year-500', status: 'suspended', installDate: '2026-02-01', expiryDate: '2027-02-01', createdAt: '2026-01-28', salesPersonId: 'S001', landlordId: 1 },
     ],
     orders: [
       { id: 'ORD001', clientId: 'C001', clientName: '陈先生', phone: '13800138001', packageId: 'pkg-year-500', packageName: '一年 500M 超值版', amount: 990, installationFee: 200, totalAmount: 1190, status: 'active', createdAt: '2026-01-10', paidAt: '2026-01-10', salesPersonId: 'S001' },
@@ -546,4 +612,9 @@ module.exports = {
   createLandlord,
   updateLandlord,
   deleteLandlord,
+  getAllBuildings,
+  getBuildingsByLandlord,
+  createBuilding,
+  updateBuilding,
+  deleteBuilding,
 };

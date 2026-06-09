@@ -220,7 +220,7 @@ app.all('/api/*', async (req, res) => {
       if (!isAdmin) {
         // 二房东只看自己的数据
         const myName = user.username || '白云公寓管理有限公司';
-        const myClients = data.clients.filter(c => c.address.includes(myName) || c.salesPersonId === String(landlordId));
+        const myClients = data.clients.filter(c => parseInt(c.landlordId) === parseInt(landlordId));
         return send({
           buildingCount: Math.max(1, Math.round(myClients.length / 50)),
           allRooms: myClients.length + 20, occupiedRooms: myClients.length, vacantRooms: 20, vacancyRate: '6.7',
@@ -243,24 +243,34 @@ app.all('/api/*', async (req, res) => {
 
     // === BUILDING ===
     if (path === '/api/building/list') {
-      const data = await db.readAllData();
-      const allClients = data.clients;
-      const buildings = {};
-      for (const c of allClients) {
-        const addr = c.address || '';
-        const parts = addr.split(' ');
-        const bName = parts[1] || '默认楼栋';
-        if (!buildings[bName]) buildings[bName] = { id: Object.keys(buildings).length + 1, name: bName, totalRooms: 0 };
-        buildings[bName].totalRooms++;
+      const allBuildings = await db.getAllBuildings();
+      if (allBuildings.length > 0) {
+        if (!isAdmin && landlordId) {
+          const filtered = allBuildings.filter(b => b.landlord_id === landlordId);
+          return send(filtered.map(b => ({ id: b.id, name: b.name, address: b.address, totalRooms: b.total_rooms, floors: b.floors, status: b.status, landlordId: b.landlord_id })));
+        }
+        return send(allBuildings.map(b => ({ id: b.id, name: b.name, address: b.address, totalRooms: b.total_rooms, floors: b.floors, status: b.status, landlordId: b.landlord_id })));
       }
-      if (Object.keys(buildings).length === 0) {
-        return send([
-          { id: 1, name: '白云公寓A栋', totalRooms: 120, floors: 10, status: 1 },
-          { id: 2, name: '白云公寓B栋', totalRooms: 100, floors: 8, status: 1 },
-          { id: 3, name: '天河青年社区A栋', totalRooms: 80, floors: 6, status: 1 },
-        ]);
+      // fallback
+      return send([
+        { id: 1, name: '白云公寓A栋', totalRooms: 60, floors: 10, status: 1, landlordId: 1 },
+        { id: 2, name: '白云公寓B栋', totalRooms: 50, floors: 8, status: 1, landlordId: 1 },
+        { id: 3, name: '天河青年社区A栋', totalRooms: 40, floors: 6, status: 1, landlordId: 2 },
+      ]);
+    }
+    if (path === '/api/building/save' && method === 'POST') {
+      const { id, ...data } = req.body;
+      if (id) {
+        const updated = await db.updateBuilding(id, { ...data, landlordId: data.landlordId || landlordId || 0 });
+        return send(updated);
       }
-      return send(Object.values(buildings));
+      const created = await db.createBuilding({ ...data, landlordId: data.landlordId || landlordId || 0 });
+      return send(created);
+    }
+    const buildingDelMatch = path.match(/^\/api\/building\/(\d+)$/);
+    if (buildingDelMatch && method === 'DELETE') {
+      await db.deleteBuilding(parseInt(buildingDelMatch[1]));
+      return send('删除成功');
     }
 
     // === ROOM ===
