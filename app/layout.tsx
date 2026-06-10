@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
-import AiChatWidget from './components/AiChatWidget';
 
 export const metadata: Metadata = {
   title: 'DVS网络 — 宽带服务中心',
@@ -23,7 +22,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="bg-[#0B0F19] text-[#E2E8F0] font-sans antialiased">
         {children}
-        <AiChatWidget />
       </body>
     </html>
   );
