@@ -767,6 +767,36 @@ module.exports = app;
 // ====== 本地开发模式：直接启动 ======
 if (require.main === module) {
   const PORT = parseInt(process.env.PORT) || 3456;
+  const path = require('path');
+  const fs = require('fs');
+
+  // 本地模式下提供静态文件服务
+  const distPath = path.resolve(__dirname, '..', 'dist');
+  // 对所有非 API 请求在兜底前尝试返回静态文件
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api/')) return next();
+    const filePath = path.join(distPath, req.path === '/' ? 'index.html' : req.path);
+    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+      const ext = path.extname(filePath).toLowerCase();
+      const mimeMap = {
+        '.html': 'text/html; charset=utf-8',
+        '.js': 'text/javascript; charset=utf-8',
+        '.css': 'text/css; charset=utf-8',
+        '.json': 'application/json; charset=utf-8',
+        '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml',
+        '.ico': 'image/x-icon', '.webp': 'image/webp',
+      };
+      res.type(mimeMap[ext] || 'application/octet-stream');
+      res.sendFile(filePath);
+    } else {
+      // SPA fallback: /guanli/* 返回 guanli/index.html
+      if (req.path.startsWith('/guanli')) {
+        res.sendFile(path.join(distPath, 'guanli', 'index.html'));
+      } else {
+        res.sendFile(path.join(distPath, 'index.html'));
+      }
+    }
+  });
 
   // 启动时初始化数据库
   db.seedIfEmpty().then(() => {
