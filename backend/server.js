@@ -290,6 +290,7 @@ app.all('/api/*', async (req, res) => {
       ]);
     }
     if (path === '/api/building/save' && method === 'POST') {
+      if (!isAdmin) return fail('无权限');
       const { id, ...data } = req.body;
       if (id) {
         const updated = await db.updateBuilding(id, { ...data, landlordId: data.landlordId || landlordId || 0 });
