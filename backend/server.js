@@ -439,12 +439,20 @@ app.all('/api/*', async (req, res) => {
     // WORKORDER
     if (path === '/api/workorder/list') {
       const tickets = await db.getAllTickets();
-      const allStaff = await db.getAllStaff();
-      const operators = allStaff.filter(s => s.role === 'maintenance' || s.role === 'admin');
-      if (tickets.length === 0) {
+      // 获取客户数据用于 landlordId 过滤
+      let landlordClientNames = [];
+      if (!isAdmin && landlordId) {
+        const data = await db.readAllData();
+        const myClients = data.clients.filter(c => parseInt(c.landlordId) === parseInt(landlordId));
+        landlordClientNames = myClients.map(c => c.name);
+      }
+      const filteredTickets = !isAdmin && landlordId
+        ? tickets.filter(t => landlordClientNames.includes(t.customer_name))
+        : tickets;
+      if (filteredTickets.length === 0) {
         return send([]);
       }
-      return send(tickets.map(t => ({
+      return send(filteredTickets.map(t => ({
         id: t.id, orderNo: t.ticket_no,
         orderType: t.issue_type === 'no_connection' ? 3 : t.issue_type === 'slow_speed' ? 3 : t.issue_type === 'equipment_fault' ? 3 : t.issue_type === 'installation' ? 1 : t.issue_type === 'other' ? 5 : 5,
         title: (t.issue_type || '工单') + ' - ' + (t.customer_name || ''),
@@ -455,6 +463,14 @@ app.all('/api/*', async (req, res) => {
       })));
     }
     if (path === '/api/workorder/pending') {
+      if (!isAdmin && landlordId) {
+        const data = await db.readAllData();
+        const myClients = data.clients.filter(c => parseInt(c.landlordId) === parseInt(landlordId));
+        const myNames = myClients.map(c => c.name);
+        const tickets = await db.getAllTickets();
+        const myPending = tickets.filter(t => t.status === 0 && myNames.includes(t.customer_name));
+        return send(myPending.length);
+      }
       const rows = await db.query('SELECT COUNT(*)::int as c FROM ticket WHERE status = 0');
       return send(rows.rows[0]?.c || 0);
     }
@@ -485,6 +501,18 @@ app.all('/api/*', async (req, res) => {
       return send({ id: orderId, status: 2 });
     }
     if (path === '/api/workorder/stats') {
+      if (!isAdmin && landlordId) {
+        const data = await db.readAllData();
+        const myClients = data.clients.filter(c => parseInt(c.landlordId) === parseInt(landlordId));
+        const myNames = myClients.map(c => c.name);
+        const tickets = await db.getAllTickets();
+        const myTickets = tickets.filter(t => myNames.includes(t.customer_name));
+        return send({
+          pending: myTickets.filter(t => t.status === 0).length || 0,
+          processing: myTickets.filter(t => t.status === 1 || t.status === 2).length || 0,
+          completed: myTickets.filter(t => t.status >= 3).length || 0,
+        });
+      }
       const result = await db.query(`SELECT
         COALESCE(SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END), 0) as pending,
         COALESCE(SUM(CASE WHEN status IN (1,2) THEN 1 ELSE 0 END), 0) as processing,
@@ -497,14 +525,32 @@ app.all('/api/*', async (req, res) => {
     // FINANCE
     if (path === '/api/finance/income') {
       const data = await db.readAllData();
-      const total = data.orders.reduce((s, o) => s + (o.amount || 0), 0) || 12600;
+      let relevantClients = data.clients;
+      if (!isAdmin && landlordId) {
+        relevantClients = data.clients.filter(c => parseInt(c.landlordId) === parseInt(landlordId));
+      }
+      const relevantNames = relevantClients.map(c => c.name);
+      const relevantOrders = data.orders.filter(o => relevantNames.includes(o.clientName));
+      const total = relevantOrders.reduce((s, o) => s + (o.amount || 0), 0) || relevantClients.length * 299;
       const monthly = [5200, 6800, 8900, 10200, 11800, total];
       return send({
-        monthIncome: total, weekIncome: Math.round(total * 0.3), totalIncome: total * 3,
-        monthlyData: monthly.map((v, i) => ({ month: (i + 1) + '月', income: v })),
+        monthIncome: Math.round(total * 100) / 100, weekIncome: Math.round(total * 0.3 * 100) / 100, totalIncome: Math.round(total * 3 * 100) / 100,
+        monthlyData: monthly.map((v, i) => ({ month: (i + 1) + '月', income: Math.round(v * 100) / 100 })),
       });
     }
     if (path === '/api/finance/records') {
+      if (!isAdmin && landlordId) {
+        const data = await db.readAllData();
+        const myClients = data.clients.filter(c => parseInt(c.landlordId) === parseInt(landlordId));
+        const myNames = myClients.map(c => c.name);
+        const myOrders = data.orders.filter(o => myNames.includes(o.clientName));
+        return send(myOrders.slice(0, 30).map((o, i) => ({
+          id: i + 1, paymentNo: 'PAY' + String(i + 1).padStart(8, '0'),
+          amount: o.amount || 0, platformFee: 1.00,
+          paymentMethod: 1, paymentType: i % 3 === 0 ? 2 : 1, status: 1,
+          paidAt: o.paidAt || o.createdAt || '2026-06-01',
+        })));
+      }
       return send(Array.from({ length: 30 }, (_, i) => ({
         id: i + 1, paymentNo: 'PAY' + String(i + 1).padStart(8, '0'),
         amount: [29, 49, 69, 99, 299, 499][i % 6], platformFee: 1.00,
