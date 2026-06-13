@@ -1,5 +1,6 @@
-// server.js �?Express API 服务
-// �?Vercel Serverless 和本地环境均可运�?
+// server.js — Express API 服务
+// 在 Vercel Serverless 和本地环境均可运行
+
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
@@ -45,7 +46,8 @@ function getWechatModules() {
 }
 
 // ============================================================
-// 角色认证中间�?// ============================================================
+// 角色认证中间件
+// ============================================================
 function getUserFromToken(req) {
   const auth = req.headers.authorization || '';
   const token = auth.replace('Bearer ', '');
@@ -64,7 +66,8 @@ function getUserFromToken(req) {
 // API 路由
 // ============================================================
 
-// 获取全部数据（总公司专用，含所有二房东数据�?app.get('/api/data', async (req, res) => {
+// 获取全部数据（总公司专用，含所有二房东数据）
+app.get('/api/data', async (req, res) => {
   try {
     const data = await db.readAllData();
     res.json({ success: true, data, packages: data.packages });
@@ -77,7 +80,7 @@ function getUserFromToken(req) {
 app.post('/api/data', async (req, res) => {
   try {
     await db.writeAllData(req.body);
-    res.json({ success: true, message: '数据已保�? });
+    res.json({ success: true, message: '数据已保存' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -136,7 +139,7 @@ app.post('/api/wechat/callback', async (req, res) => {
 });
 
 // ============================================================
-// API 路由：角色化 / 二房东管�?/ 业务接口
+// API 路由：角色化 / 二房东管理 / 业务接口
 // ============================================================
 app.all('/api/*', async (req, res) => {
   const path = req.path;
@@ -152,39 +155,41 @@ app.all('/api/*', async (req, res) => {
     // === AUTH ===
     if (path === '/api/auth/login' && method === 'POST') {
       const { username, password, loginType, landlordId: llId } = req.body || {};
-      const companies = ['白云公寓管理有限公司', '天河青年社区', '幸福家园公寓', '阳光城公�?, '碧桂园公�?];
+      const companies = ['白云公寓管理有限公司', '天河青年社区', '幸福家园公寓', '阳光城公寓', '碧桂园公寓'];
 
       if (loginType === 'admin') {
         if (username === 'admin' && (!password || password === 'admin123')) {
           const token = Buffer.from(JSON.stringify({ role: 'admin', username: 'admin' })).toString('base64');
-          return send({ token, userId: 1, username: 'admin', companyName: '总公�?· 管理�? });
+          return send({ token, userId: 1, username: 'admin', companyName: '总公司 · 管理员' });
         }
         const staffList = await db.getAllStaff();
         const user = staffList.find(s => s.name === username && (!password || s.password === password));
         if (user) {
           const token = Buffer.from(JSON.stringify({ role: 'admin', username: user.name })).toString('base64');
-          return send({ token, userId: user.id, username: user.name, companyName: '总公�?· ' + user.role });
+          return send({ token, userId: user.id, username: user.name, companyName: '总公司 · ' + user.role });
         }
-        return fail('总公司演示账�? admin / admin123', 401);
+        return fail('总公司演示账号: admin / admin123', 401);
       } else {
-        // 二房东登�?        const idx = llId ? (parseInt(llId) - 1) : 0;
+        // 二房东登录
+        const idx = llId ? (parseInt(llId) - 1) : 0;
         const company = companies[idx] || companies[0];
         if (!password || password === 'admin123') {
           const token = Buffer.from(JSON.stringify({ role: 'landlord', landlordId: idx + 1, username: username || company })).toString('base64');
-          return send({ token, userId: 1000 + (idx + 1), username: username || company, companyName: '二房�?· ' + company });
+          return send({ token, userId: 1000 + (idx + 1), username: username || company, companyName: '二房东 · ' + company });
         }
-        return fail('二房东演示密�? admin123', 401);
+        return fail('二房东演示密码: admin123', 401);
       }
     }
 
     // === 二房东管理（总公司专用） ===
     if (path === '/api/landlord/list') {
-      if (!isAdmin) return fail('无权�?);
+      if (!isAdmin) return fail('无权限');
       const landlords = await db.getAllLandlords();
-      // 如果没有数据，返回默认列�?      if (landlords.length === 0) {
+      // 如果没有数据，返回默认列表
+      if (landlords.length === 0) {
         return send([
-          { id: 1, name: '白云公寓管理有限公司', contact: '陈�?, phone: '13800001001', address: '白云大道1�?, status: 1, shareRatio: 70, totalRooms: 220, activeUsers: 176, monthIncome: 12600 },
-          { id: 2, name: '天河青年社区', contact: '李�?, phone: '13800001002', address: '天河�?8�?, status: 1, shareRatio: 65, totalRooms: 150, activeUsers: 120, monthIncome: 8900 },
+          { id: 1, name: '白云公寓管理有限公司', contact: '陈总', phone: '13800001001', address: '白云大道1号', status: 1, shareRatio: 70, totalRooms: 220, activeUsers: 176, monthIncome: 12600 },
+          { id: 2, name: '天河青年社区', contact: '李总', phone: '13800001002', address: '天河路88号', status: 1, shareRatio: 65, totalRooms: 150, activeUsers: 120, monthIncome: 8900 },
         ]);
       }
       return send(landlords.map(l => ({
@@ -193,18 +198,18 @@ app.all('/api/*', async (req, res) => {
       })));
     }
     if (path === '/api/landlord/save' && method === 'POST') {
-      if (!isAdmin) return fail('无权�?);
+      if (!isAdmin) return fail('无权限');
       const ll = await db.createLandlord(req.body);
       return send(ll);
     }
     if (path === '/api/landlord/update' && method === 'POST') {
-      if (!isAdmin) return fail('无权�?);
+      if (!isAdmin) return fail('无权限');
       const ll = await db.updateLandlord(req.body.id, req.body);
       return send(ll);
     }
     const landlordDelMatch = path.match(/^\/api\/landlord\/(\d+)$/);
     if (landlordDelMatch && method === 'DELETE') {
-      if (!isAdmin) return fail('无权�?);
+      if (!isAdmin) return fail('无权限');
       await db.deleteLandlord(parseInt(landlordDelMatch[1]));
       return send('删除成功');
     }
@@ -279,13 +284,13 @@ app.all('/api/*', async (req, res) => {
       }
       // fallback
       return send([
-        { id: 1, name: '白云公寓A�?, totalRooms: 60, floors: 10, status: 1, landlordId: 1 },
-        { id: 2, name: '白云公寓B�?, totalRooms: 50, floors: 8, status: 1, landlordId: 1 },
-        { id: 3, name: '天河青年社区A�?, totalRooms: 40, floors: 6, status: 1, landlordId: 2 },
+        { id: 1, name: '白云公寓A栋', totalRooms: 60, floors: 10, status: 1, landlordId: 1 },
+        { id: 2, name: '白云公寓B栋', totalRooms: 50, floors: 8, status: 1, landlordId: 1 },
+        { id: 3, name: '天河青年社区A栋', totalRooms: 40, floors: 6, status: 1, landlordId: 2 },
       ]);
     }
     if (path === '/api/building/save' && method === 'POST') {
-      if (!isAdmin) return fail('无权�?);
+      if (!isAdmin) return fail('无权限');
       const { id, ...data } = req.body;
       if (id) {
         const updated = await db.updateBuilding(id, { ...data, landlordId: data.landlordId || landlordId || 0 });
@@ -313,11 +318,11 @@ app.all('/api/*', async (req, res) => {
     }
 
     // === BROADBAND / WORKORDER / FINANCE / PACKAGE (同原有逻辑) ===
-    // 以下与之前代码相�?- 保持向后兼容
+    // 以下与之前代码相同 - 保持向后兼容
     if (path === '/api/room/save' && method === 'POST') return send({ id: 999 });
     if (path === '/api/room/batch' && method === 'POST') return send('批量创建成功');
     if (path.match(/^\/api\/room\/\d+$/) && method === 'DELETE') return send('删除成功');
-    if (path.match(/^\/api\/room\/\d+\/status/) && method === 'PUT') return send('状态更新成�?);
+    if (path.match(/^\/api\/room\/\d+\/status/) && method === 'PUT') return send('状态更新成功');
     if (path === '/api/tenant/list') {
       const data = await db.readAllData();
       return send(data.clients.map((c, i) => ({
@@ -416,7 +421,7 @@ app.all('/api/*', async (req, res) => {
       const acct = !isAdmin ? (await db.getAllBroadbandAccounts()).find(a => a.id === acctId && a.landlord_id === landlordId) : null;
       if (!isAdmin && !acct) return fail('无权限');
       await db.updateBroadbandAccount(acctId, { status: 2 });
-      return send('Suspended');
+      return send('已暂停');
     }
     const resumeMatch = path.match(/^\/api\/broadband\/(\d+)\/resume$/);
     if (resumeMatch && method === 'PUT') {
@@ -424,13 +429,13 @@ app.all('/api/*', async (req, res) => {
       const acct = !isAdmin ? (await db.getAllBroadbandAccounts()).find(a => a.id === acctId && a.landlord_id === landlordId) : null;
       if (!isAdmin && !acct) return fail('无权限');
       await db.updateBroadbandAccount(acctId, { status: 1 });
-      return send('Resumed');
+      return send('已恢复');
     }
     const renewMatch = path.match(/^\/api\/broadband\/(\d+)\/renew$/);
     if (renewMatch && method === 'POST') {
       const acctId = parseInt(renewMatch[1]);
       const account = (await db.getAllBroadbandAccounts()).find(a => a.id === acctId);
-      if (!account) return fail('Not found', 404);
+      if (!account) return fail('账号不存在', 404);
       if (!isAdmin && account.landlord_id !== landlordId) return fail('无权限');
       const now = new Date();
       const currentExpire = account.expire_date ? new Date(account.expire_date) : now;
@@ -438,7 +443,7 @@ app.all('/api/*', async (req, res) => {
       const newExpire = new Date(Math.max(currentExpire.getTime(), now.getTime()));
       newExpire.setMonth(newExpire.getMonth() + months);
       await db.updateBroadbandAccount(acctId, { ...account, expireDate: newExpire.toISOString().split('T')[0], status: 1 });
-      return send({ message: 'Renewed', newExpireDate: newExpire.toISOString().split('T')[0] });
+      return send({ message: '续费成功', newExpireDate: newExpire.toISOString().split('T')[0] });
     }
 
     // WORKORDER
@@ -502,7 +507,7 @@ app.all('/api/*', async (req, res) => {
     }
     if (path === '/api/workorder/complete' && method === 'PUT') {
       const { orderId, note } = req.body;
-      await db.updateTicket(parseInt(orderId), { handleNote: note || '已完成处�?, status: 3, resolvedAt: new Date().toISOString() });
+      await db.updateTicket(parseInt(orderId), { handleNote: note || '已完成处理', status: 3, resolvedAt: new Date().toISOString() });
       return send({ id: orderId, status: 2 });
     }
     if (path === '/api/workorder/stats') {
@@ -540,7 +545,7 @@ app.all('/api/*', async (req, res) => {
       const monthly = [5200, 6800, 8900, 10200, 11800, total];
       return send({
         monthIncome: Math.round(total * 100) / 100, weekIncome: Math.round(total * 0.3 * 100) / 100, totalIncome: Math.round(total * 3 * 100) / 100,
-        monthlyData: monthly.map((v, i) => ({ month: (i + 1) + '�?, income: Math.round(v * 100) / 100 })),
+        monthlyData: monthly.map((v, i) => ({ month: (i + 1) + '月', income: Math.round(v * 100) / 100 })),
       });
     }
     if (path === '/api/finance/records') {
@@ -606,7 +611,7 @@ app.all('/api/*', async (req, res) => {
           totalIncome: Math.round(grandTotal * 100) / 100,
           totalLandlordIncome: Math.round(grandLandlord * 100) / 100,
           totalPlatformFee: Math.round(grandPlatform * 100) / 100,
-          month: new Date().getMonth() + 1 + '�?,
+          month: new Date().getMonth() + 1 + '月',
           year: new Date().getFullYear(),
         }
       });
@@ -627,12 +632,12 @@ app.all('/api/*', async (req, res) => {
 
       // Generate monthly detail
       const monthlyData = [
-        { month: '1�?, income: Math.round(totalIncome * 0.10 * 100) / 100 },
-        { month: '2�?, income: Math.round(totalIncome * 0.12 * 100) / 100 },
-        { month: '3�?, income: Math.round(totalIncome * 0.15 * 100) / 100 },
-        { month: '4�?, income: Math.round(totalIncome * 0.18 * 100) / 100 },
-        { month: '5�?, income: Math.round(totalIncome * 0.20 * 100) / 100 },
-        { month: '6�?, income: Math.round(totalIncome * 0.25 * 100) / 100 },
+        { month: '1月', income: Math.round(totalIncome * 0.10 * 100) / 100 },
+        { month: '2月', income: Math.round(totalIncome * 0.12 * 100) / 100 },
+        { month: '3月', income: Math.round(totalIncome * 0.15 * 100) / 100 },
+        { month: '4月', income: Math.round(totalIncome * 0.18 * 100) / 100 },
+        { month: '5月', income: Math.round(totalIncome * 0.20 * 100) / 100 },
+        { month: '6月', income: Math.round(totalIncome * 0.25 * 100) / 100 },
       ];
 
       // Generate transaction records for this landlord
@@ -661,7 +666,7 @@ app.all('/api/*', async (req, res) => {
     }
 
     if (path === '/api/finance/statistics') {
-      if (!isAdmin) return fail('无权�?);
+      if (!isAdmin) return fail('无权限');
       const data = await db.readAllData();
       const totalOrders = data.orders.length || data.clients.length;
       const totalIncome = data.orders.reduce((s, o) => s + (o.amount || 0), 0) || data.clients.length * 299;
@@ -679,10 +684,10 @@ app.all('/api/*', async (req, res) => {
     // PACKAGE
     if (path === '/api/package/list' || path === '/api/package/all') {
       return send([
-        { id: 1, name: '经济�?, speed: '100M', price: 29, durationMonths: 1, description: '100Mbps 适合轻度上网', sortOrder: 1, status: 1 },
-        { id: 2, name: '畅享�?, speed: '300M', price: 49, durationMonths: 1, description: '300Mbps 适合视频娱乐', sortOrder: 2, status: 1 },
+        { id: 1, name: '经济版', speed: '100M', price: 29, durationMonths: 1, description: '100Mbps 适合轻度上网', sortOrder: 1, status: 1 },
+        { id: 2, name: '畅享版', speed: '300M', price: 49, durationMonths: 1, description: '300Mbps 适合视频娱乐', sortOrder: 2, status: 1 },
         { id: 3, name: '极速版', speed: '500M', price: 69, durationMonths: 1, description: '500Mbps 适合游戏直播', sortOrder: 3, status: 1 },
-        { id: 4, name: '千兆�?, speed: '1000M', price: 99, durationMonths: 1, description: '1000Mbps 极速体�?, sortOrder: 4, status: 1 },
+        { id: 4, name: '千兆版', speed: '1000M', price: 99, durationMonths: 1, description: '1000Mbps 极速体验', sortOrder: 4, status: 1 },
         { id: 5, name: '经济年付', speed: '100M', price: 299, durationMonths: 12, sortOrder: 5, status: 1 },
         { id: 6, name: '畅享年付', speed: '300M', price: 499, durationMonths: 12, sortOrder: 6, status: 1 },
       ]);
@@ -710,7 +715,7 @@ app.all('/api/*', async (req, res) => {
         const myCompany = user.username || '';
         filteredData = {
           ...data,
-          clients: data.clients.filter(c => parseInt(c.landlordId) === parseInt(landlordId))),
+          clients: data.clients.filter(c => parseInt(c.landlordId) === parseInt(landlordId)),
         };
       }
 
@@ -720,15 +725,15 @@ app.all('/api/*', async (req, res) => {
             '宽带账号': 'BB' + String(c.id || '').padStart(6, '0'),
             '客户姓名': c.name || '',
             '联系电话': c.phone || '',
-            '所属公�?: c.address?.split(' ')[0] || '',
+            '所属公寓': c.address?.split(' ')[0] || '',
             '房号': c.roomNo || '',
             '套餐': c.packageId || '',
-            '在线状�?: c.status === 'active' ? '在线' : '离线',
-            '服务状�?: c.status === 'active' ? '正常' : c.status === 'suspended' ? '暂停' : '已过�?,
+            '在线状态': c.status === 'active' ? '在线' : '离线',
+            '服务状态': c.status === 'active' ? '正常' : c.status === 'suspended' ? '暂停' : '已过期',
             '到期时间': c.expiryDate || '永久',
             '安装日期': c.installDate || '',
           }));
-          headers = ['宽带账号', '客户姓名', '联系电话', '所属公�?, '房号', '套餐', '在线状�?, '服务状�?, '到期时间', '安装日期'];
+          headers = ['宽带账号', '客户姓名', '联系电话', '所属公寓', '房号', '套餐', '在线状态', '服务状态', '到期时间', '安装日期'];
           sheetName = '宽带用户';
           break;
         }
@@ -740,46 +745,46 @@ app.all('/api/*', async (req, res) => {
             '公寓': c.address?.split(' ')[0] || '',
             '房号': c.roomNo || '',
             '套餐': c.packageId || '',
-            '状�?: c.status === 'active' ? '正常' : c.status === 'suspended' ? '暂停' : '已过�?,
+            '状态': c.status === 'active' ? '正常' : c.status === 'suspended' ? '暂停' : '已过期',
             '安装日期': c.installDate || '',
             '到期日期': c.expiryDate || '',
             '创建时间': c.createdAt || '',
           }));
-          headers = ['编号', '姓名', '电话', '公寓', '房号', '套餐', '状�?, '安装日期', '到期日期', '创建时间'];
+          headers = ['编号', '姓名', '电话', '公寓', '房号', '套餐', '状态', '安装日期', '到期日期', '创建时间'];
           sheetName = '客户信息';
           break;
         }
         case 'orders': {
           rows = filteredData.orders.map(o => ({
-            '订单�?: o.id || '',
+            '订单号': o.id || '',
             '客户': o.clientName || '',
             '电话': o.phone || '',
             '套餐': o.packageName || o.packageId || '',
             '金额': o.amount || 0,
-            '安装�?: o.installationFee || 0,
-            '总金�?: o.totalAmount || 0,
-            '状�?: o.status || '',
+            '安装费': o.installationFee || 0,
+            '总金额': o.totalAmount || 0,
+            '状态': o.status || '',
             '创建时间': o.createdAt || '',
             '付款时间': o.paidAt || '',
           }));
-          headers = ['订单�?, '客户', '电话', '套餐', '金额', '安装�?, '总金�?, '状�?, '创建时间', '付款时间'];
+          headers = ['订单号', '客户', '电话', '套餐', '金额', '安装费', '总金额', '状态', '创建时间', '付款时间'];
           sheetName = '订单记录';
           break;
         }
         case 'tickets': {
           rows = filteredData.tickets.map(t => ({
-            '工单�?: t.id || '',
+            '工单号': t.id || '',
             '客户': t.clientName || '',
             '电话': t.phone || '',
             '问题类型': t.issueType || t.description?.substring(0, 20) || '',
             '问题描述': t.description || '',
-            '优先�?: t.priority || '普�?,
-            '状�?: t.status || '',
-            '处理�?: t.assignedTo || '',
+            '优先级': t.priority || '普通',
+            '状态': t.status || '',
+            '处理人': t.assignedTo || '',
             '处理备注': t.handle_note || t.resolution || '',
             '创建时间': t.createdAt || '',
           }));
-          headers = ['工单�?, '客户', '电话', '问题类型', '问题描述', '优先�?, '状�?, '处理�?, '处理备注', '创建时间'];
+          headers = ['工单号', '客户', '电话', '问题类型', '问题描述', '优先级', '状态', '处理人', '处理备注', '创建时间'];
           sheetName = '工单记录';
           break;
         }
@@ -790,12 +795,12 @@ app.all('/api/*', async (req, res) => {
             '电话': o.phone || '',
             '套餐': o.packageName || '',
             '金额': o.amount || 0,
-            '安装�?: o.installationFee || 0,
+            '安装费': o.installationFee || 0,
             '合计': o.totalAmount || 0,
-            '状�?: o.status || '',
+            '状态': o.status || '',
             '付款时间': o.paidAt || '',
           }));
-          headers = ['单号', '客户', '电话', '套餐', '金额', '安装�?, '合计', '状�?, '付款时间'];
+          headers = ['单号', '客户', '电话', '套餐', '金额', '安装费', '合计', '状态', '付款时间'];
           sheetName = '财务记录';
           break;
         }
@@ -820,7 +825,8 @@ app.all('/api/*', async (req, res) => {
   }
 });
 
-// 导出 Express app（供 Vercel Serverless 使用�?module.exports = app;
+// 导出 Express app（供 Vercel Serverless 使用）
+module.exports = app;
 
 // ====== 本地开发模式：直接启动 ======
 if (require.main === module) {
@@ -828,8 +834,10 @@ if (require.main === module) {
   const path = require('path');
   const fs = require('fs');
 
-  // 本地模式下提供静态文件服�?  const distPath = path.resolve(__dirname, '..', 'dist');
-  // 对所有非 API 请求在兜底前尝试返回静态文�?  app.use((req, res, next) => {
+  // 本地模式下提供静态文件服务
+  const distPath = path.resolve(__dirname, '..', 'dist');
+  // 对所有非 API 请求在兜底前尝试返回静态文件
+  app.use((req, res, next) => {
     if (req.path.startsWith('/api/')) return next();
     const filePath = path.join(distPath, req.path === '/' ? 'index.html' : req.path);
     if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
@@ -854,13 +862,14 @@ if (require.main === module) {
     }
   });
 
-  // 启动时初始化数据�?  db.seedIfEmpty().then(() => {
-    console.log('�?数据库初始化完成');
+  // 启动时初始化数据库
+  db.seedIfEmpty().then(() => {
+    console.log('✓ 数据库初始化完成');
     app.listen(PORT, () => {
-      console.log(`�?本地服务已启�? http://localhost:${PORT}`);
+      console.log(`✓ 本地服务已启动: http://localhost:${PORT}`);
     });
   }).catch(err => {
-    console.error('�?数据库初始化失败:', err.message);
+    console.error('✗ 数据库初始化失败:', err.message);
     process.exit(1);
   });
 }
