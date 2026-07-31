@@ -194,3 +194,33 @@
 @media (prefers-reduced-motion: reduce) {
   .guanli-root *, .guanli-root *::before, .guanli-root *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
+
+.guanli-overview-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 18px; }
+.guanli-card-dark { background: #1d1d1f; color: #fff; border-color: #1d1d1f; }
+.guanli-hero-card { min-height: 250px; display: flex; flex-direction: column; justify-content: space-between; }
+.guanli-hero-card h2 { margin: 10px 0 0; max-width: 520px; font-size: clamp(28px, 4vw, 44px); line-height: 1.04; letter-spacing: -.045em; }
+.guanli-hero-copy { max-width: 470px; margin: 18px 0 0; color: #a1a1a6; line-height: 1.65; }
+.guanli-hero-footer { display: flex; gap: 20px; color: #b8b8bd; font-size: 12px; }
+.guanli-hero-footer span { display: inline-flex; align-items: center; gap: 7px; }
+.guanli-occupancy-card { display: flex; flex-direction: column; justify-content: space-between; min-height: 250px; }
+.guanli-card-heading, .guanli-card-meta, .guanli-section-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.guanli-card-heading h3 { margin: 8px 0 0; font-size: 56px; letter-spacing: -.06em; }
+.guanli-icon-muted { color: var(--g-muted); }
+.guanli-progress { height: 10px; overflow: hidden; border-radius: 99px; background: #e6e6e8; }
+.guanli-progress span { display: block; height: 100%; border-radius: inherit; background: var(--g-blue); transition: width .5s ease; }
+.guanli-card-meta { color: var(--g-muted); font-size: 12px; }
+.guanli-two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.guanli-list-card { min-height: 270px; }
+.guanli-section-heading h3 { margin: 8px 0 0; font-size: 21px; letter-spacing: -.025em; }
+.guanli-icon-link { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; color: var(--g-ink); background: #f0f0f2; }
+.guanli-list { margin-top: 22px; }
+.guanli-list-row { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-top: 1px solid var(--g-border); }
+.guanli-list-icon { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 auto; color: var(--g-blue); background: #eaf3ff; border-radius: 11px; }
+.guanli-list-icon-warm { color: #b76b00; background: #fff4df; }
+.guanli-list-main { min-width: 0; flex: 1; display: grid; gap: 3px; }
+.guanli-list-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.guanli-list-main span { color: var(--g-muted); font-size: 12px; }
+.guanli-status-dot { width: 8px; height: 8px; border-radius: 50%; background: #ff9f0a; }
+.guanli-list-arrow { color: var(--g-muted); font-size: 22px; }
+.guanli-empty-copy { color: var(--g-muted); margin: 40px 0 0; font-size: 14px; }
+@media (max-width: 800px) { .guanli-overview-grid, .guanli-two-column { grid-template-columns: 1fr; } .guanli-hero-card, .guanli-occupancy-card { min-height: 220px; } }
