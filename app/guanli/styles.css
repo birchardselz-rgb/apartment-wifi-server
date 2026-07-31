@@ -1,0 +1,196 @@
+:root {
+  --g-bg: #f5f5f7;
+  --g-surface: rgba(255, 255, 255, 0.86);
+  --g-surface-strong: #ffffff;
+  --g-ink: #1d1d1f;
+  --g-muted: #6e6e73;
+  --g-faint: #86868b;
+  --g-line: rgba(29, 29, 31, 0.1);
+  --g-blue: #0071e3;
+  --g-blue-soft: #e8f2ff;
+  --g-green: #18864b;
+  --g-orange: #b45f06;
+  --g-red: #c9342d;
+  --g-radius-lg: 28px;
+  --g-radius-md: 18px;
+  --g-radius-sm: 12px;
+  --g-shadow: 0 18px 45px rgba(29, 29, 31, 0.07);
+  --g-shadow-soft: 0 8px 24px rgba(29, 29, 31, 0.06);
+}
+
+.guanli-root {
+  min-height: 100vh;
+  color: var(--g-ink);
+  background:
+    radial-gradient(circle at 10% -8%, rgba(0, 113, 227, 0.08), transparent 30rem),
+    var(--g-bg);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif;
+  letter-spacing: -0.012em;
+}
+
+.guanli-root *,
+.guanli-root *::before,
+.guanli-root *::after { box-sizing: border-box; }
+
+.guanli-root button,
+.guanli-root input,
+.guanli-root select { font: inherit; }
+
+.guanli-root button { -webkit-tap-highlight-color: transparent; }
+
+.guanli-focus:focus-visible,
+.guanli-root button:focus-visible,
+.guanli-root a:focus-visible,
+.guanli-root input:focus-visible,
+.guanli-root select:focus-visible {
+  outline: 3px solid rgba(0, 113, 227, 0.35);
+  outline-offset: 3px;
+}
+
+.guanli-card {
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius-lg);
+  background: var(--g-surface);
+  box-shadow: var(--g-shadow-soft);
+  backdrop-filter: blur(20px);
+}
+
+.guanli-section { padding: 26px; }
+
+.guanli-eyebrow {
+  margin: 0 0 8px;
+  color: var(--g-blue);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.guanli-title {
+  margin: 0;
+  color: var(--g-ink);
+  font-size: clamp(24px, 3vw, 34px);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.12;
+}
+
+.guanli-subtitle {
+  margin: 9px 0 0;
+  color: var(--g-muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.guanli-btn {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 17px;
+  color: var(--g-blue);
+  background: var(--g-blue-soft);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: transform 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.guanli-btn:hover { background: #d9eaff; box-shadow: 0 7px 18px rgba(0, 113, 227, 0.12); transform: translateY(-1px); }
+.guanli-btn:active { transform: translateY(0) scale(0.98); }
+.guanli-btn--dark { color: #fff; background: var(--g-ink); }
+.guanli-btn--dark:hover { background: #3a3a3c; }
+.guanli-btn--danger { color: #fff; background: var(--g-red); }
+
+.guanli-state {
+  display: grid;
+  min-height: 180px;
+  place-items: center;
+  padding: 30px 20px;
+  text-align: center;
+}
+
+.guanli-state__icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 13px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--g-blue);
+  background: var(--g-blue-soft);
+}
+
+.guanli-state__title { margin: 0; font-size: 15px; font-weight: 650; }
+.guanli-state__description { max-width: 360px; margin: 7px auto 16px; color: var(--g-muted); font-size: 13px; line-height: 1.55; }
+
+.guanli-metric {
+  position: relative;
+  overflow: hidden;
+  min-height: 166px;
+  padding: 22px;
+}
+
+.guanli-metric::after {
+  position: absolute;
+  right: -30px;
+  bottom: -50px;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  background: var(--g-metric-glow, rgba(0, 113, 227, 0.08));
+  content: "";
+}
+
+.guanli-metric__icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  margin-bottom: 22px;
+  place-items: center;
+  border-radius: 13px;
+  color: var(--g-metric-color, var(--g-blue));
+  background: var(--g-metric-bg, var(--g-blue-soft));
+}
+
+.guanli-metric__label { margin: 0; color: var(--g-muted); font-size: 12px; font-weight: 600; }
+.guanli-metric__value { margin: 7px 0 4px; font-size: 29px; font-weight: 700; letter-spacing: -0.05em; }
+.guanli-metric__detail { margin: 0; color: var(--g-faint); font-size: 12px; }
+
+.guanli-modal-backdrop {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(29, 29, 31, 0.28);
+  backdrop-filter: blur(12px);
+}
+
+.guanli-modal {
+  width: min(100%, 420px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 24px;
+  padding: 28px;
+  background: #fff;
+  box-shadow: 0 30px 80px rgba(29, 29, 31, 0.2);
+}
+
+.guanli-modal__actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+.guanli-modal__cancel { color: var(--g-ink); background: #f1f1f3; }
+
+@media (max-width: 720px) {
+  .guanli-section { padding: 20px; }
+  .guanli-card { border-radius: var(--g-radius-md); }
+  .guanli-metric { min-height: 145px; padding: 18px; }
+  .guanli-metric__icon { margin-bottom: 14px; }
+  .guanli-metric__value { font-size: 25px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guanli-root *, .guanli-root *::before, .guanli-root *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
