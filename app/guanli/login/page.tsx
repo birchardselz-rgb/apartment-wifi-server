@@ -1,0 +1,56 @@
+'use client';
+
+import { FormEvent, useState } from 'react';
+import { ArrowRight, LockKeyhole, Wifi } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ApiError, login } from '../lib/api';
+import { setSession } from '../lib/auth';
+
+export default function GuanliLoginPage() {
+  const router = useRouter();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!username.trim() || !password) {
+      setError('请输入账号和密码');
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    try {
+      const session = await login(username.trim(), password);
+      setSession(session);
+      router.replace('/guanli/');
+    } catch (requestError) {
+      setError(requestError instanceof ApiError ? requestError.message : '登录失败，请稍后重试');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return <main className="guanli-root flex min-h-screen items-center justify-center overflow-hidden px-5 py-10">
+    <div className="pointer-events-none absolute left-[-10rem] top-[-10rem] h-[32rem] w-[32rem] rounded-full bg-[#dcecff] blur-3xl" />
+    <div className="pointer-events-none absolute bottom-[-12rem] right-[-9rem] h-[30rem] w-[30rem] rounded-full bg-[#e9e9ed] blur-3xl" />
+    <section className="relative grid w-full max-w-[980px] overflow-hidden rounded-[32px] border border-black/[0.08] bg-white/80 shadow-[0_35px_100px_rgba(29,29,31,.12)] backdrop-blur-xl lg:grid-cols-[1.05fr_.95fr]">
+      <div className="hidden min-h-[620px] flex-col justify-between bg-[#1d1d1f] p-10 text-white lg:flex">
+        <div><div className="mb-10 grid h-11 w-11 place-items-center rounded-[14px] bg-white text-[#1d1d1f]"><Wifi size={22} /></div><p className="text-[12px] font-semibold uppercase tracking-[.18em] text-white/50">DVS NETWORK</p><h1 className="mt-5 max-w-[340px] text-[50px] font-semibold leading-[1.02] tracking-[-.06em]">把每一栋公寓，<br />连接成一个系统。</h1></div>
+        <div><div className="mb-5 h-px w-16 bg-white/30" /><p className="max-w-[300px] text-[13px] leading-6 text-white/55">宽带、客户、工单与财务，在一个清晰的运营界面里协同工作。</p></div>
+      </div>
+      <div className="flex min-h-[620px] flex-col justify-center p-7 sm:p-12">
+        <div className="mb-10 lg:hidden"><div className="mb-7 grid h-11 w-11 place-items-center rounded-[14px] bg-[#1d1d1f] text-white"><Wifi size={22} /></div><p className="text-[12px] font-semibold uppercase tracking-[.16em] text-[#86868b]">DVS NETWORK</p></div>
+        <div className="mb-8"><p className="guanli-eyebrow">运营管理中心</p><h2 className="text-[32px] font-semibold tracking-[-.055em]">欢迎回来。</h2><p className="mt-3 text-[14px] leading-6 text-[#6e6e73]">登录后查看今天的网络运营状态。</p></div>
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          <label className="block"><span className="mb-2 block text-[12px] font-semibold text-[#6e6e73]">账号</span><input className="h-12 w-full rounded-[14px] border border-black/[0.12] bg-white px-4 text-[14px] outline-none transition placeholder:text-[#b5b5ba] focus:border-[#0071e3] focus:ring-4 focus:ring-[#0071e3]/10" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="请输入管理员账号" autoComplete="username" /></label>
+          <label className="block"><span className="mb-2 block text-[12px] font-semibold text-[#6e6e73]">密码</span><div className="relative"><LockKeyhole size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#86868b]" /><input className="h-12 w-full rounded-[14px] border border-black/[0.12] bg-white pl-11 pr-4 text-[14px] outline-none transition placeholder:text-[#b5b5ba] focus:border-[#0071e3] focus:ring-4 focus:ring-[#0071e3]/10" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="请输入登录密码" autoComplete="current-password" /></div></label>
+          {error && <p className="rounded-[12px] bg-[#fff0ef] px-3 py-2.5 text-[12px] leading-5 text-[#c9342d]" role="alert">{error}</p>}
+          <button className="flex h-12 w-full items-center justify-center gap-2 rounded-[14px] bg-[#0071e3] text-[14px] font-semibold text-white shadow-[0_10px_24px_rgba(0,113,227,.2)] transition hover:bg-[#0077ed] disabled:cursor-not-allowed disabled:opacity-50" disabled={submitting} type="submit">{submitting ? '正在登录…' : '登录管理中心'}{!submitting && <ArrowRight size={16} />}</button>
+        </form>
+        <div className="mt-8 flex items-center gap-2 text-[11px] text-[#86868b]"><span className="h-1.5 w-1.5 rounded-full bg-[#18864b]" />系统服务正常运行</div>
+      </div>
+    </section>
+  </main>;
+}

@@ -10,7 +10,10 @@
   },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "api/index.js" },
-    { "source": "/guanli/((?!assets/).*)", "destination": "/guanli/index.html" }
+    { "source": "/guanli", "destination": "/guanli/index.html" },
+    { "source": "/guanli/", "destination": "/guanli/index.html" },
+    { "source": "/guanli/login", "destination": "/guanli/login/index.html" },
+    { "source": "/guanli/login/", "destination": "/guanli/login/index.html" }
   ],
   "headers": [
     {
