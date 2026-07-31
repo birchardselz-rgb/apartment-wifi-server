@@ -1,2 +1,2 @@
 import { ModulePage } from "../components/ModulePage";
-export default function BroadbandPage() { return <ModulePage config={{ eyebrow: "BROADBAND", title: "Network services", description: "See active broadband plans and connection status at a glance.", keys: ["broadband", "broadbands", "orders", "subscriptions"], columns: ["name", "phone", "roomNumber", "status"] }} />; }
+export default function BroadbandPage() { return <ModulePage config={{ eyebrow: "\u5bbd\u5e26", title: "\u7f51\u7edc\u670d\u52a1", description: "\u4e00\u773c\u67e5\u770b\u5bbd\u5e26\u5957\u9910\u548c\u8fde\u63a5\u72b6\u6001\u3002", keys: ["broadband", "broadbands", "orders", "subscriptions"], columns: ["name", "phone", "roomNumber", "status"] }} />; }

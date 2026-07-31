@@ -1,2 +1,2 @@
 import { ModulePage } from "../components/ModulePage";
-export default function TicketsPage() { return <ModulePage config={{ eyebrow: "SERVICE DESK", title: "Work orders", description: "Resolve requests with a calmer, more focused queue.", keys: ["tickets", "workorders", "workOrders"], columns: ["title", "type", "status", "createdAt"] }} />; }
+export default function TicketsPage() { return <ModulePage config={{ eyebrow: "\u670d\u52a1\u53f0", title: "\u5de5\u5355\u7ba1\u7406", description: "\u8ba9\u6bcf\u4e00\u4e2a\u670d\u52a1\u8bf7\u6c42\u90fd\u5f97\u5230\u6e05\u6670\u8ddf\u8fdb\u3002", keys: ["tickets", "workorders", "workOrders"], columns: ["title", "type", "status", "createdAt"] }} />; }

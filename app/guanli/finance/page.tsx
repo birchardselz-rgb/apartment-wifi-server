@@ -1,2 +1,2 @@
 import { ModulePage } from "../components/ModulePage";
-export default function FinancePage() { return <ModulePage config={{ eyebrow: "FINANCE", title: "Billing overview", description: "Make revenue and payment records easier to review.", keys: ["income", "payments", "finance", "orders"], columns: ["name", "amount", "status", "createdAt"] }} />; }
+export default function FinancePage() { return <ModulePage config={{ eyebrow: "\u8d22\u52a1", title: "\u8d26\u5355\u603b\u89c8", description: "\u8ba9\u6536\u5165\u548c\u4ed8\u6b3e\u8bb0\u5f55\u66f4\u52a0\u6e05\u6670\u6613\u67e5\u3002", keys: ["income", "payments", "finance", "orders"], columns: ["name", "amount", "status", "createdAt"] }} />; }
